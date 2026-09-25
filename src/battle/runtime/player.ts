@@ -89,6 +89,11 @@ export class FilmPlayer {
     return this.film.duration;
   }
 
+  /** frame rate actually delivered and the scene resolution scale it settled on */
+  get stats() {
+    return { fps: this.avgInterval ? Math.round(1000 / this.avgInterval) : 0, scale: this.scale };
+  }
+
   /** Resize to a new layout (fold/unfold, rotation). Sizes in points. */
   setSize(width: number, height: number, pixelRatio: number) {
     this.renderer.setPixelRatio(pixelRatio);

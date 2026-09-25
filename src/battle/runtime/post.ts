@@ -132,7 +132,10 @@ export class Post {
     // letterbox: Blender keys the box height in image widths on a 16:9 frame; on
     // other screens the bars close in proportion over the film's frame region
     const size = this.letterbox ? this.letterbox.value(frame) : LOOK.letterboxFull;
-    const k = THREE.MathUtils.clamp((LOOK.letterboxFull - size) / (LOOK.letterboxFull - LOOK.letterboxScope), 0, 1);
+    // scope bars suit a wide screen; they fade out as the screen gets taller (none at square or portrait),
+    // so an unfolded or upright phone keeps the whole picture
+    const wide = THREE.MathUtils.clamp((this.fs.camera.aspect - 1) / (16 / 9 - 1), 0, 1);
+    const k = wide * THREE.MathUtils.clamp((LOOK.letterboxFull - size) / (LOOK.letterboxFull - LOOK.letterboxScope), 0, 1);
     const scope = (LOOK.letterboxScope / LOOK.letterboxFull) * this.fs.filmHeightOnScreen;
     // no bars at all (band past the edge) when the frame is fully open
     this.band.value = k <= 0 ? 2 : THREE.MathUtils.lerp(1, Math.min(1, scope), k);

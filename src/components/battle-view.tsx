@@ -22,14 +22,15 @@ export function BattleView() {
   const ref = useRef<CanvasRef>(null);
   const player = useRef<FilmPlayer | null>(null);
   const size = useRef({ width: 0, height: 0 });
-  const clock = useRef({ start: 0, running: false });
+  const clock = useRef({ start: 0, running: false, seeking: false });
   const [phase, setPhase] = useState<Phase>("loading");
   const [stage, setStage] = useState("");
   const [cardKey, setCardKey] = useState(0);
   const audio = useAudioPlayer(SFX);
 
   const start = useCallback(() => {
-    clock.current = { start: performance.now() / 1000, running: true };
+    // seekTo is asynchronous: until the audio reports the rewind, don't sync the picture to it
+    clock.current = { start: performance.now() / 1000, running: true, seeking: true };
     audio.seekTo(0);
     audio.play();
     setCardKey((k) => k + 1);
@@ -59,13 +60,16 @@ export function BattleView() {
           return;
         }
         player.current = p;
+        // dev: `__film.stats` from the debugger shows fps and render scale
+        if (__DEV__) (globalThis as { __film?: FilmPlayer }).__film = p;
         if (size.current.width) p.setSize(size.current.width, size.current.height, PixelRatio.get());
         p.renderer.setAnimationLoop(() => {
           const c = clock.current;
           if (!c.running) return;
           let t = performance.now() / 1000 - c.start;
+          if (c.seeking && audio.currentTime < t + 1) c.seeking = false;
           // the soundtrack is the master clock: pull the picture back onto it when they drift
-          if (audio.playing && Math.abs(audio.currentTime - t) > RESYNC) {
+          if (!c.seeking && audio.playing && Math.abs(audio.currentTime - t) > RESYNC) {
             c.start = performance.now() / 1000 - audio.currentTime;
             t = audio.currentTime;
           }
@@ -101,7 +105,8 @@ export function BattleView() {
       <Canvas ref={ref} style={StyleSheet.absoluteFill} />
       {(phase === "card" || phase === "done") && <EndCard key={cardKey} />}
       {phase === "loading" && (
-        <View style={[styles.center, { pointerEvents: "none" }]}>
+        // opaque: the warm-up renders every shot once and must not flash on screen
+        <View style={[styles.center, styles.cover, { pointerEvents: "none" }]}>
           <ActivityIndicator color="#D5F64B" />
           <Text style={styles.hint}>{stage}</Text>
         </View>
@@ -119,5 +124,6 @@ export function BattleView() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
   center: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: 12 },
+  cover: { backgroundColor: "#000" },
   hint: { color: "#F5F3E8", opacity: 0.6, fontSize: 13, letterSpacing: 1 },
 });

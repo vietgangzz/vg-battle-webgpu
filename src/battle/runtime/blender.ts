@@ -352,7 +352,7 @@ const fade = (t: number) => {
 
 const negIf = (v: number, h: number, bit: number) => {
   "use gpu";
-  return std.select(v, -v, (h & bit) !== 0);
+  return std.select(v, -v, (h & d.u32(bit)) !== 0);
 };
 
 const grad3 = (hash: number, x: number, y: number, z: number) => {

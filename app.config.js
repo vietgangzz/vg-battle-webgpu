@@ -15,6 +15,6 @@ module.exports = {
     android: {
       package: "studio.vgang.battle",
     },
-    plugins: ["expo-router", "react-native-webgpu", "expo-audio", "expo-font"],
+    plugins: ["expo-router", "react-native-webgpu", "expo-audio", "expo-font", "./plugins/with-scene-lifecycle"],
   },
 };
