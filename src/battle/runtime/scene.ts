@@ -148,8 +148,6 @@ export class FilmScene {
   );
   /** active camera's DOF (null when the shot has none) */
   dof: { focus: number; fstop: number } | null = null;
-  /** vertical scale of the film frame on screen (1 = film fills the height) */
-  filmHeightOnScreen = 1;
 
   private readonly placed: Placed[] = [];
   private readonly bound: Bound[] = [];
@@ -439,7 +437,6 @@ export class FilmScene {
     this.camera.far = c.clip[1];
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld(true);
-    this.filmHeightOnScreen = tanVFilm / tanV;
     // camera-glued overlays were framed for the film; stretch them to the screen
     const tanHScreen = tanV * framing.aspect;
     this.overlayScale.set(Math.max(1, tanHScreen / tanH), Math.max(1, tanV / tanVFilm), 1);

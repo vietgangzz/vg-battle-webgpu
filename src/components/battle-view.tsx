@@ -1,8 +1,7 @@
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import { useKeepAwake } from "expo-keep-awake";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, type LayoutChangeEvent, PixelRatio, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { ActivityIndicator, type LayoutChangeEvent, PixelRatio, StyleSheet, Text, View } from "react-native";
 import { Canvas, type CanvasRef } from "react-native-webgpu";
 
 import { FilmPlayer } from "@/battle/runtime/player";
@@ -16,6 +15,8 @@ const RESYNC = 0.06;
 const FOLDED_ASPECT = 0.58;
 /** the unfold: camera pull-back from the hero to the film's opening frame */
 const OPEN_SECONDS = 1.4;
+/** launched already open: the intro holds this long, then opens on its own */
+const OPEN_INTRO_SECONDS = 2.5;
 /** dev fold simulation: the outer display's aspect */
 const SIM_FOLDED_ASPECT = 0.46;
 
@@ -27,11 +28,12 @@ const isFolded = (w: number, h: number) => w > 0 && h > 0 && w / h < FOLDED_ASPE
 /**
  * The whole showcase on one full-screen canvas.
  *
- * Folded (the outer display): an intro idles on the hero in the opening shot's
- * world. Unfolding the phone pulls the camera back to the film's first frame
- * and cuts a lime seam down the hinge, then the film plays on from there with
- * its soundtrack as the master clock, and ends on the vgang card. Opened
- * already at launch, the film starts straight away. Tap to replay.
+ * It always opens on the intro: the hero in the opening shot's world. The battle
+ * waits for the phone to unfold (already open at launch, it waits a moment):
+ * the camera pulls back to the film's first frame as a lime seam cuts down the
+ * hinge and a progressive blur resolves from the edges, then the film plays on
+ * from there with its soundtrack as the master clock, ends on the vgang card,
+ * and returns to the intro.
  */
 export function BattleView() {
   useKeepAwake();
@@ -39,13 +41,13 @@ export function BattleView() {
   const player = useRef<FilmPlayer | null>(null);
   const size = useRef({ width: 0, height: 0 });
   const mode = useRef<Mode>("idle");
-  const clock = useRef({ start: 0, seeking: false, standbyStart: 0, openStart: 0 });
+  const clock = useRef({ start: 0, seeking: false, seekTo: 0, standbyStart: 0, openStart: 0 });
   const [phase, setPhase] = useState<Phase>("loading");
   const [stage, setStage] = useState("");
   const [cardKey, setCardKey] = useState(0);
   const [simFold, setSimFold] = useState(false);
-  /** dev: the black half-panels sliding away while the simulated phone opens (0 = off) */
-  const [doorGap, setDoorGap] = useState(0);
+  /** the outer (folded) display is showing */
+  const [folded, setFolded] = useState(false);
   const audio = useAudioPlayer(SFX);
 
   /** Play the film from `offset` seconds, audio in step. */
@@ -54,6 +56,7 @@ export function BattleView() {
       // seekTo is asynchronous: until the audio reports it, don't sync the picture to it
       clock.current.start = performance.now() / 1000 - offset;
       clock.current.seeking = true;
+      clock.current.seekTo = offset;
       audio.seekTo(offset);
       audio.play();
       player.current?.endStandby();
@@ -71,24 +74,42 @@ export function BattleView() {
     setPhase("standby");
   }, [audio]);
 
-  /** From the top: the intro while folded, the film straight away when open. */
+  /** From the top: always the intro; the battle waits for the phone to open. */
   const begin = useCallback(() => {
-    const { width, height } = size.current;
-    if (isFolded(width, height)) startStandby();
-    else startFilm(0);
-  }, [startFilm, startStandby]);
+    setFolded(isFolded(size.current.width, size.current.height));
+    startStandby();
+  }, [startStandby]);
 
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    size.current = { width, height };
-    player.current?.setSize(width, height, PixelRatio.get());
-    // the phone opened while the intro was waiting: pull back into the film
-    if (mode.current === "standby" && !isFolded(width, height)) {
-      clock.current.openStart = performance.now() / 1000;
-      mode.current = "opening";
-      setPhase("opening");
-    }
+
+  /** Leave the intro: pull back into the film's opening frame. */
+  const open = useCallback(() => {
+    if (mode.current !== "standby") return;
+    clock.current.openStart = performance.now() / 1000;
+    mode.current = "opening";
+    setPhase("opening");
   }, []);
+
+  // already open: the intro holds briefly, then plays the unfold on its own
+  useEffect(() => {
+    if (phase !== "standby" || folded) return;
+    const id = setTimeout(open, OPEN_INTRO_SECONDS * 1000);
+    return () => clearTimeout(id);
+  }, [phase, folded, open]);
+
+  const onLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const { width, height } = e.nativeEvent.layout;
+      const wasFolded = isFolded(size.current.width, size.current.height);
+      size.current = { width, height };
+      setFolded(isFolded(width, height));
+      player.current?.setSize(width, height, PixelRatio.get());
+      // repaint at the new size in the same pass, before the next vsync shows a stretched frame
+      if (mode.current !== "idle") player.current?.redraw();
+      // the phone just opened while the intro was waiting
+      if (wasFolded && !isFolded(width, height)) open();
+    },
+    [open],
+  );
 
   useEffect(() => {
     void setAudioModeAsync({ playsInSilentMode: true });
@@ -123,7 +144,8 @@ export function BattleView() {
           }
           if (mode.current !== "film") return;
           let t = now - c.start;
-          if (c.seeking && Math.abs(audio.currentTime - t) < 1) c.seeking = false;
+          // the audio has landed on the seek once it reports a time at (or just past) the target
+          if (c.seeking && audio.currentTime >= c.seekTo - 0.02 && audio.currentTime < t + 1) c.seeking = false;
           // the soundtrack is the master clock: pull the picture back onto it when they drift
           if (!c.seeking && audio.playing && Math.abs(audio.currentTime - t) > RESYNC) {
             c.start = now - audio.currentTime;
@@ -150,50 +172,38 @@ export function BattleView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // after the card, back to the intro (the next unfold plays it again)
   useEffect(() => {
     if (phase !== "card") return;
-    const id = setTimeout(() => setPhase("done"), END_CARD_SECONDS * 1000);
+    const id = setTimeout(() => {
+      setPhase("done");
+      begin();
+    }, END_CARD_SECONDS * 1000);
     return () => clearTimeout(id);
-  }, [phase]);
+  }, [phase, begin]);
 
   // ---- dev: fold / unfold the simulator (it has one display): `__battle.fold()`, `__battle.unfold()`
-  const doors = useSharedValue(0);
   useEffect(() => {
     if (!__DEV__) return;
     (globalThis as { __battle?: object }).__battle = {
       fold: () => {
-        doors.value = 0;
         setSimFold(true);
         startStandby();
       },
-      unfold: () => {
-        // the panels slide open like the halves of the phone, over the full-size picture
-        setDoorGap(size.current.height * SIM_FOLDED_ASPECT);
-        doors.value = 0;
-        doors.value = withTiming(1, { duration: 450, easing: Easing.out(Easing.cubic) }, (done) => {
-          if (done) runOnJS(setDoorGap)(0);
-        });
-        setSimFold(false);
-      },
+      unfold: () => setSimFold(false),
       player: () => player.current,
+      mode: () => mode.current,
+      open,
     };
-  }, [doors, startStandby]);
-  const doorLeft = useAnimatedStyle(() => ({ transform: [{ translateX: `${-doors.value * 100}%` }] }));
-  const doorRight = useAnimatedStyle(() => ({ transform: [{ translateX: `${doors.value * 100}%` }] }));
+  }, [startStandby, open]);
 
   return (
     <View style={styles.root}>
       <View style={simFold ? styles.simFolded : styles.fill} onLayout={onLayout}>
         <Canvas ref={ref} style={StyleSheet.absoluteFill} />
       </View>
-      {__DEV__ && doorGap > 0 && (
-        <View style={[StyleSheet.absoluteFill, styles.doors, { pointerEvents: "none" }]}>
-          <Animated.View style={[styles.door, doorLeft]} />
-          <View style={{ width: doorGap }} />
-          <Animated.View style={[styles.door, doorRight]} />
-        </View>
-      )}
       <StandbyCard visible={phase === "standby"} />
+
       {(phase === "card" || phase === "done") && <EndCard key={cardKey} />}
       {phase === "loading" && (
         // opaque: the warm-up renders every shot once and must not flash on screen
@@ -207,7 +217,7 @@ export function BattleView() {
           <Text style={styles.hint}>WebGPU is not available on this device.</Text>
         </View>
       )}
-      {phase === "done" && <Pressable style={StyleSheet.absoluteFill} onPress={begin} accessibilityLabel="Replay" />}
+
     </View>
   );
 }
@@ -216,8 +226,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000", alignItems: "center" },
   fill: { ...StyleSheet.absoluteFill },
   simFolded: { height: "100%", aspectRatio: SIM_FOLDED_ASPECT },
-  doors: { flexDirection: "row" },
-  door: { flex: 1, backgroundColor: "#000" },
   center: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: 12 },
   cover: { backgroundColor: "#000" },
   hint: { color: "#F5F3E8", opacity: 0.6, fontSize: 13, letterSpacing: 1 },

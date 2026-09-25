@@ -124,6 +124,7 @@ if (standbyAt) {
     fs.update(16, { ...framing, intro: 1 - e });
     post.update(16);
     post.setSeam(Math.sin(Math.PI * Math.min(open * 1.4, 1)) ** 2 * 1.5);
+    post.setUnfoldBlur(open > 0 ? (1 - e) ** 1.3 : 0);
     post.render();
     const enc = device.createCommandEncoder();
     enc.copyTextureToBuffer({ texture: target }, { buffer: readback, bytesPerRow }, [W, H]);

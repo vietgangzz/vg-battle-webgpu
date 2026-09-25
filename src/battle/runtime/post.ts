@@ -2,14 +2,16 @@
  * The Blender compositor (lib/post.py) as a TSL render pipeline, in the same order
  * (after laying the low-resolution volumes over the scene):
  * bloom wide -> bloom tight -> star streaks -> exposure -> lens distortion +
- * dispersion -> saturation -> impact invert -> flash -> vignette -> FXAA -> letterbox.
+ * dispersion -> saturation -> impact invert -> flash -> vignette -> FXAA.
+ * (The film's scope letterbox is left out: the app plays edge to edge.)
  * Every keyed knob reads its film track. Depth of field (EEVEE's, so before
- * the compositor) and the star streaks are separate output variants, switched
- * in only for the frames that use them.
+ * the compositor), the star streaks and the unfold's progressive blur are
+ * separate output variants, switched in only for the frames that use them.
  */
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { fxaa } from "three/addons/tsl/display/FXAANode.js";
+import { gaussianBlur } from "three/addons/tsl/display/GaussianBlurNode.js";
 import * as THREE from "three/webgpu";
 
 import type { Film, Track } from "./film";
@@ -27,9 +29,6 @@ export const LOOK = {
   bloomTight: { strength: 0.3 / 3, radius: 0.45, threshold: 2.0 },
   streakThreshold: 4.0,
   streakGain: 0.6,
-  /** Blender Box Mask height (in image widths) for a full 16:9 frame and for 2.39:1 */
-  letterboxFull: 9 / 16,
-  letterboxScope: 0.418,
   /** circle of confusion on a 36 mm sensor, metres */
   coc: 3e-5,
 };
@@ -42,16 +41,16 @@ interface Knob {
 export class Post {
   readonly pipeline: THREE.RenderPipeline;
   private readonly knobs: Knob[] = [];
-  private readonly letterbox: Track | null;
-  private readonly band = T.uniform(1.0);
   /** the unfold slash: a lime seam down the hinge line (0 = off) */
   private readonly seam = T.uniform(0.0);
+  /** the unfold's progressive blur: the newly opened outer edges resolve last (0 = off) */
+  private readonly unfoldBlur = T.uniform(0.0);
   private readonly focus = T.uniform(3.0);
   private readonly range = T.uniform(1.0);
   private readonly bokeh = T.uniform(1.0);
   /** output graphs by variant: DOF on/off x star streaks on/off (each costs passes only when used) */
   private readonly variants = new Map<string, N>();
-  private readonly build: (dof: boolean, streak: boolean) => N;
+  private readonly build: (dof: boolean, streak: boolean, blur: boolean) => N;
   private variant = "";
   private readonly streakKnob: Knob;
   private readonly renderer: THREE.WebGPURenderer;
@@ -78,7 +77,6 @@ export class Post {
     const impact = knob("impact.Factor", 0);
     const flash = knob("flash.Factor", 0);
     const vignette = knob("vignette", 0.55);
-    this.letterbox = post["letterbox.Size"] ? film.track(post["letterbox.Size"]) : null;
 
     // targets clear to transparent black: where no volume is drawn its alpha must be 0
     // (the final output forces alpha to 1)
@@ -90,7 +88,7 @@ export class Post {
     const vol = T.texture(fs.volumeTarget.texture, T.screenUV);
     const color = T.vec4(T.add(T.mul(sceneColor.rgb, T.sub(1.0, vol.a)), vol.rgb), 1.0);
 
-    const chain = (base: N, withStreaks: boolean) => {
+    const chain = (base: N, withStreaks: boolean, withBlur: boolean) => {
       // ---- glare
       // Blender's glare blooms only what exceeds the threshold (the excess, not the whole pixel)
       const bw = LOOK.bloomWide;
@@ -116,37 +114,23 @@ export class Post {
       const core = T.exp(T.negate(T.div(T.mul(dx, T.screenSize.x), T.mul(T.screenDPR, 1.2))));
       const halo = T.exp(T.negate(T.div(dx, 0.035)));
       const seamGlow = T.mul(T.add(T.mul(core, 4.0), T.mul(halo, 0.18)), this.seam);
-      const c9s = T.add(c9, T.mul(T.vec3(0.66, 0.92, 0.07), seamGlow));
+      let c9s: N = T.add(c9, T.mul(T.vec3(0.66, 0.92, 0.07), seamGlow));
+      if (withBlur) c9s = progressiveBlur(c9s, this.unfoldBlur);
       // antialiasing on the finished (display-range) image
       const c10 = T.vec4(fxaa(T.vec4(T.clamp(c9s, 0.0, 1.0), 1.0))).rgb;
-      // ---- letterbox: visible band as a fraction of the screen height
-      const y = T.mul(T.abs(T.sub(T.screenUV.y, 0.5)), 2.0);
-      const px = T.div(2.0, T.screenSize.y);
-      const lb = T.sub(1.0, T.smoothstep(T.sub(this.band, px), T.add(this.band, px), y));
-      return T.vec4(T.mul(c10, lb), 1.0);
+      return T.vec4(c10, 1.0);
     };
 
     this.streakKnob = this.knobs[0];
-    this.build = (withDof, withStreaks) =>
-      chain(withDof ? dof(color, viewZ, this.focus, this.range, this.bokeh) : color, withStreaks);
-    this.pipeline = new THREE.RenderPipeline(renderer, this.output(false, false));
+    this.build = (withDof, withStreaks, withBlur) =>
+      chain(withDof ? dof(color, viewZ, this.focus, this.range, this.bokeh) : color, withStreaks, withBlur);
+    this.pipeline = new THREE.RenderPipeline(renderer, this.output(false, false, false));
 
   }
 
   /** Read this frame's knobs; switch DOF on the shots that use it. */
   update(frame: number) {
     for (const k of this.knobs) if (k.track) k.u.value = k.track.value(frame);
-
-    // letterbox: Blender keys the box height in image widths on a 16:9 frame; on
-    // other screens the bars close in proportion over the film's frame region
-    const size = this.letterbox ? this.letterbox.value(frame) : LOOK.letterboxFull;
-    // scope bars suit a wide screen; they fade out as the screen gets taller (none at square or portrait),
-    // so an unfolded or upright phone keeps the whole picture
-    const wide = THREE.MathUtils.clamp((this.fs.camera.aspect - 1) / (16 / 9 - 1), 0, 1);
-    const k = wide * THREE.MathUtils.clamp((LOOK.letterboxFull - size) / (LOOK.letterboxFull - LOOK.letterboxScope), 0, 1);
-    const scope = (LOOK.letterboxScope / LOOK.letterboxFull) * this.fs.filmHeightOnScreen;
-    // no bars at all (band past the edge) when the frame is fully open
-    this.band.value = k <= 0 ? 2 : THREE.MathUtils.lerp(1, Math.min(1, scope), k);
 
     const d = this.fs.dof;
     if (d) {
@@ -157,24 +141,24 @@ export class Post {
       this.range.value = Math.max((s * s * d.fstop * LOOK.coc) / (f * f), 0.05);
       this.bokeh.value = THREE.MathUtils.clamp(2.8 / d.fstop, 0.5, 2.5);
     }
-    this.select(!!d, this.streakKnob.u.value > 0);
+    this.select(!!d, this.streakKnob.u.value > 0, this.unfoldBlur.value > 0.001);
   }
 
-  private output(withDof: boolean, withStreaks: boolean) {
-    const key = `${withDof}|${withStreaks}`;
+  private output(withDof: boolean, withStreaks: boolean, withBlur: boolean) {
+    const key = `${withDof}|${withStreaks}|${withBlur}`;
     let node = this.variants.get(key);
     if (!node) {
-      node = this.build(withDof, withStreaks);
+      node = this.build(withDof, withStreaks, withBlur);
       this.variants.set(key, node);
     }
     return node;
   }
 
-  private select(withDof: boolean, withStreaks: boolean) {
-    const key = `${withDof}|${withStreaks}`;
+  private select(withDof: boolean, withStreaks: boolean, withBlur: boolean) {
+    const key = `${withDof}|${withStreaks}|${withBlur}`;
     if (key === this.variant) return;
     this.variant = key;
-    this.pipeline.outputNode = this.output(withDof, withStreaks);
+    this.pipeline.outputNode = this.output(withDof, withStreaks, withBlur);
     this.pipeline.needsUpdate = true;
   }
 
@@ -207,8 +191,10 @@ export class Post {
   warmVariants() {
     for (const withDof of [false, true]) {
       for (const withStreaks of [false, true]) {
-        this.select(withDof, withStreaks);
-        this.render();
+        for (const withBlur of [false, true]) {
+          this.select(withDof, withStreaks, withBlur);
+          this.render();
+        }
       }
     }
     this.variant = "";
@@ -223,9 +209,28 @@ export class Post {
     this.seam.value = v;
   }
 
+  /** Strength of the unfold's progressive blur (0 = sharp). */
+  setUnfoldBlur(v: number) {
+    this.unfoldBlur.value = v;
+  }
+
   setRenderScale(scale: number) {
     this.renderScale = scale;
   }
+}
+
+/**
+ * Progressive blur for the unfold: sharp along the hinge, rising to a heavy
+ * blur at the outer edges (the halves of the screen that just opened), all
+ * of it scaled by `amount` as the picture resolves.
+ */
+function progressiveBlur(input: N, amount: N) {
+  const src = T.vec4(T.clamp(input, 0.0, 1.0), 1.0);
+  const soft = T.vec4(gaussianBlur(src, null, 6, { resolutionScale: 0.5 })).rgb;
+  const heavy = T.vec4(gaussianBlur(src, null, 16, { resolutionScale: 0.25 })).rgb;
+  const k = T.mul(T.smoothstep(0.05, 0.48, T.abs(T.sub(T.screenUV.x, 0.5))), amount);
+  const sharpToSoft = T.mix(T.vec3(src), soft, T.clamp(T.mul(k, 2.0), 0.0, 1.0));
+  return T.mix(sharpToSoft, heavy, T.clamp(T.sub(T.mul(k, 2.0), 1.0), 0.0, 1.0));
 }
 
 /** The part of each pixel brighter than `threshold`, keeping its hue. */

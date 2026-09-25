@@ -50,6 +50,7 @@ export class FilmPlayer {
   private avgInterval = 0;
   private lastRender = 0;
   private settle = 0;
+  private lastFrame = 0;
 
   private constructor(
     private readonly context: GPUCanvasContext & { present: () => void },
@@ -144,6 +145,8 @@ export class FilmPlayer {
     const idle = pingpong(seconds * this.film.fps * 0.5, 36);
     this.framing = { ...this.framing, intro: 1 - e };
     this.post.setSeam(Math.pow(Math.sin(Math.PI * Math.min(open * 1.4, 1)), 2) * 1.5);
+    // the opened edges start blurred and resolve as the camera settles
+    this.post.setUnfoldBlur(open > 0 ? Math.pow(1 - e, 1.3) : 0);
     this.draw(INTRO_FRAME + idle * (1 - e));
     return true;
   }
@@ -157,9 +160,16 @@ export class FilmPlayer {
   endStandby() {
     this.framing = { ...this.framing, intro: 0 };
     this.post.setSeam(0);
+    this.post.setUnfoldBlur(0);
+  }
+
+  /** Draw the current frame again right away (after a resize, so no stale or stretched frame shows). */
+  redraw() {
+    this.draw(this.lastFrame);
   }
 
   private draw(frame: number) {
+    this.lastFrame = frame;
     this.fs.update(frame, this.framing);
     this.post.update(frame);
     this.post.render();

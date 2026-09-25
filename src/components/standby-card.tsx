@@ -15,9 +15,8 @@ const LOCKUP = require("../../assets/brand/lockup.png");
 const LIME = "#D5F64B";
 
 /**
- * Over the folded-screen intro: the vgang lockup and an invitation to open the
- * phone, with a lime glint running down the hinge line. Fades away the moment
- * the phone starts to open.
+ * Over the intro: the vgang lockup and the call to unfold, with a lime glint
+ * running down the hinge line. Fades away the moment the phone starts to open.
  */
 export function StandbyCard({ visible }: { visible: boolean }) {
   const [fontsLoaded] = useFonts({ ManropeSemiBold: require("../../assets/fonts/Manrope-SemiBold.ttf") });
