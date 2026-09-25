@@ -27,6 +27,19 @@ export interface PlayerOptions {
   onProgress?: (stage: string) => void;
 }
 
+/** First frame after the film's opening fade from black: the intro idles here and the film resumes from it. */
+const INTRO_FRAME = 16;
+
+const easeInOut = (x: number) => {
+  const t = Math.min(Math.max(x, 0), 1);
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+};
+
+const pingpong = (x: number, len: number) => {
+  const m = x % (2 * len);
+  return m < len ? m : 2 * len - m;
+};
+
 /** Resolution of the scene passes adapts within these bounds (fraction of native). */
 const MIN_SCALE = 0.6;
 const MAX_SCALE = 1.0;
@@ -113,6 +126,37 @@ export class FilmPlayer {
     const last = this.film.manifest.frames - 1;
     this.draw(Math.min(Math.max(seconds * this.film.fps, 0), last));
     return true;
+  }
+
+  /**
+   * The folded-screen intro: the opening shot's world idling, close on the hero.
+   * `open` (0..1, driven by the caller once the phone unfolds) pulls the camera
+   * back to the film's first frame and cuts the lime seam down the hinge; at 1
+   * the picture is exactly frame 0, so the film starts without a cut.
+   */
+  standby(seconds: number, open: number, now = performance.now()) {
+    const since = now - this.lastRender;
+    if (this.lastRender && since < this.budget * 0.9) return false;
+    this.adapt(since);
+    this.lastRender = now;
+    const e = easeInOut(open);
+    // a slow ping-pong through the standoff's first beats keeps the tails and motes alive
+    const idle = pingpong(seconds * this.film.fps * 0.5, 36);
+    this.framing = { ...this.framing, intro: 1 - e };
+    this.post.setSeam(Math.pow(Math.sin(Math.PI * Math.min(open * 1.4, 1)), 2) * 1.5);
+    this.draw(INTRO_FRAME + idle * (1 - e));
+    return true;
+  }
+
+  /** Where the film picks up after the intro (its fade-in from black is skipped). */
+  get introSeconds() {
+    return INTRO_FRAME / this.film.fps;
+  }
+
+  /** Leave the intro: the film owns the camera from here. */
+  endStandby() {
+    this.framing = { ...this.framing, intro: 0 };
+    this.post.setSeam(0);
   }
 
   private draw(frame: number) {

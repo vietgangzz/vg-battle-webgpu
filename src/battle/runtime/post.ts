@@ -44,6 +44,8 @@ export class Post {
   private readonly knobs: Knob[] = [];
   private readonly letterbox: Track | null;
   private readonly band = T.uniform(1.0);
+  /** the unfold slash: a lime seam down the hinge line (0 = off) */
+  private readonly seam = T.uniform(0.0);
   private readonly focus = T.uniform(3.0);
   private readonly range = T.uniform(1.0);
   private readonly bokeh = T.uniform(1.0);
@@ -109,8 +111,14 @@ export class Post {
       const e = T.length(T.div(T.sub(T.screenUV, 0.5), T.vec2(0.625, 0.55)));
       const mask = T.smoothstep(1.27, 0.73, e);
       const c9 = T.mul(c8, T.add(T.mul(mask, vignette), T.sub(1.0, vignette)));
+      // the unfold slash: a thin hot core and a soft halo along the hinge (screen centre)
+      const dx = T.abs(T.sub(T.screenUV.x, 0.5));
+      const core = T.exp(T.negate(T.div(T.mul(dx, T.screenSize.x), T.mul(T.screenDPR, 1.2))));
+      const halo = T.exp(T.negate(T.div(dx, 0.035)));
+      const seamGlow = T.mul(T.add(T.mul(core, 4.0), T.mul(halo, 0.18)), this.seam);
+      const c9s = T.add(c9, T.mul(T.vec3(0.66, 0.92, 0.07), seamGlow));
       // antialiasing on the finished (display-range) image
-      const c10 = T.vec4(fxaa(T.vec4(T.clamp(c9, 0.0, 1.0), 1.0))).rgb;
+      const c10 = T.vec4(fxaa(T.vec4(T.clamp(c9s, 0.0, 1.0), 1.0))).rgb;
       // ---- letterbox: visible band as a fraction of the screen height
       const y = T.mul(T.abs(T.sub(T.screenUV.y, 0.5)), 2.0);
       const px = T.div(2.0, T.screenSize.y);
@@ -210,6 +218,11 @@ export class Post {
    * Resolution of the scene (and volume) passes relative to the canvas; the
    * compositor upsamples. The canvas itself stays at native size.
    */
+  /** Intensity of the unfold slash down the hinge line. */
+  setSeam(v: number) {
+    this.seam.value = v;
+  }
+
   setRenderScale(scale: number) {
     this.renderScale = scale;
   }

@@ -112,6 +112,34 @@ post.warmVariants();
 await device.queue.onSubmittedWorkDone();
 log("warmed up");
 
+const standbyAt = arg("--standby", "");
+if (standbyAt) {
+  // the folded-screen intro at several unfold progress values (0 = folded, 1 = film frame 0)
+  mkdirSync(out, { recursive: true });
+  const bytesPerRow = Math.ceil((W * 4) / 256) * 256;
+  const readback = device.createBuffer({ size: bytesPerRow * H, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  for (const open of standbyAt.split(",").map(Number)) {
+    (renderer as unknown as { _nodes: { nodeFrame: { update(): void } } })._nodes.nodeFrame.update();
+    const e = open < 0.5 ? 4 * open ** 3 : 1 - (-2 * open + 2) ** 3 / 2;
+    fs.update(16, { ...framing, intro: 1 - e });
+    post.update(16);
+    post.setSeam(Math.sin(Math.PI * Math.min(open * 1.4, 1)) ** 2 * 1.5);
+    post.render();
+    const enc = device.createCommandEncoder();
+    enc.copyTextureToBuffer({ texture: target }, { buffer: readback, bytesPerRow }, [W, H]);
+    device.queue.submit([enc.finish()]);
+    await readback.mapAsync(GPUMapMode.READ);
+    const src = new Uint8Array(readback.getMappedRange());
+    const rows = Buffer.alloc(W * H * 4);
+    for (let y = 0; y < H; y++) rows.set(src.subarray(y * bytesPerRow, y * bytesPerRow + W * 4), y * W * 4);
+    readback.unmap();
+    writeFileSync(`${out}/s${String(Math.round(open * 100)).padStart(3, "0")}.bgra`, rows);
+  }
+  writeFileSync(`${out}/size.txt`, `${W}x${H}\n`);
+  log("standby frames written");
+  process.exit(0);
+}
+
 const profileAt = arg("--profile", "");
 if (profileAt) {
   // GPU cost of each visible object alone at one frame (scene pass only, 4 repeats, median)

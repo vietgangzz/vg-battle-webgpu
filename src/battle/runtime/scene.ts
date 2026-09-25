@@ -53,6 +53,11 @@ export interface Framing {
   aspect: number;
   /** aspect of the region that must always stay visible (4:3 keeps the action on unfolded phones) */
   safeAspect: number;
+  /**
+   * Weight of the folded-screen intro camera (0 = the film's own camera): a close
+   * portrait of the hero in the opening shot's world, blended out as the phone opens.
+   */
+  intro?: number;
 }
 
 export const FILM_ASPECT = 16 / 9;
@@ -85,7 +90,13 @@ class Xf {
   }
 }
 
+/** The folded-screen intro shot: distance from the hero (m), camera lift (m), vertical half-FOV tangent. */
+const INTRO = { distance: 4.4, lift: 0.3, tanV: 0.34 };
+
 const V1 = new THREE.Vector3();
+const I_EYE = new THREE.Vector3();
+const I_M = new THREE.Matrix4();
+const I_Q = new THREE.Quaternion();
 const V2 = new THREE.Vector3();
 const Q1 = new THREE.Quaternion();
 const M1 = new THREE.Matrix4();
@@ -433,6 +444,30 @@ export class FilmScene {
     const tanHScreen = tanV * framing.aspect;
     this.overlayScale.set(Math.max(1, tanHScreen / tanH), Math.max(1, tanV / tanVFilm), 1);
     this.dof = c.focus ? { focus: c.focus.value(frame), fstop: c.fstop } : null;
+    if (framing.intro) this.blendIntroCamera(frame, framing, tanV, framing.intro);
+  }
+
+  /**
+   * Pull the camera toward a close portrait of the hero, seen from where the film's
+   * camera stands, so opening the phone reads as one continuous pull-back.
+   */
+  private blendIntroCamera(frame: number, framing: Framing, filmTanV: number, w: number) {
+    const hero = this.blobs.find((b) => b.slot === 0);
+    if (!hero) return;
+    hero.xf.compose(frame, M1);
+    const focus = V1.set(0, 0, 0.55).applyMatrix4(M1);
+    const toCam = V2.copy(this.camera.position).sub(focus).setZ(0).normalize();
+    const eye = I_EYE.copy(focus).addScaledVector(toCam, INTRO.distance).setZ(focus.z + INTRO.lift);
+    I_M.lookAt(eye, focus, this.camera.up);
+    I_Q.setFromRotationMatrix(I_M);
+    this.camera.position.lerp(eye, w);
+    this.camera.quaternion.slerp(I_Q, w);
+    // blend the field of view in log space so the zoom feels even
+    const tanV = Math.exp(THREE.MathUtils.lerp(Math.log(filmTanV), Math.log(INTRO.tanV), w));
+    this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(tanV));
+    this.camera.aspect = framing.aspect;
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld(true);
   }
 
   private deform(d: NonNullable<Placed["deform"]>, frame: number) {
