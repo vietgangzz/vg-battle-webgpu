@@ -45,7 +45,9 @@ export class ReactNativeCanvas {
 
 export const makeWebGPURenderer = (context: GPUCanvasContext) =>
   new THREE.WebGPURenderer({
-    antialias: true,
+    // the film renders through a post pipeline that samples the scene's depth;
+    // antialiasing is FXAA at the end of that pipeline instead of MSAA
+    antialias: false,
     canvas: new ReactNativeCanvas(
       context.canvas as unknown as NativeCanvas,
     ) as unknown as HTMLCanvasElement,
