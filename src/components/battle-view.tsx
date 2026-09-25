@@ -16,7 +16,7 @@ const FOLDED_ASPECT = 0.58;
 /** the unfold: camera pull-back from the hero to the film's opening frame */
 const OPEN_SECONDS = 1.4;
 /** launched already open: the intro holds this long, then opens on its own */
-const OPEN_INTRO_SECONDS = 2.5;
+const OPEN_INTRO_SECONDS = 10;
 /** dev fold simulation: the outer display's aspect */
 const SIM_FOLDED_ASPECT = 0.46;
 
