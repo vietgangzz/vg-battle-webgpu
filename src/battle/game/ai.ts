@@ -136,7 +136,11 @@ export class BossBrain implements Brain {
   private guardUntil = 0;
   private slamReady = 3;
   private reactAt = -1;
-  private readonly r = rng(7);
+  private readonly r: () => number;
+
+  constructor(seed = 7) {
+    this.r = rng(seed);
+  }
 
   update(dt: number, time: number, me: Actor, foe: Actor): Orders {
     const out: Orders = {};

@@ -40,8 +40,8 @@ export class StageCamera {
     }
     const y = shot.focusY * 0.5;
     // from the near side of the road, raised, tipped down onto the fighters
-    this.wantTarget.set(x, y + 0.6, 0.85);
-    this.wantPos.set(x, y - dist * 0.94, 1.4 + dist * 0.34);
+    this.wantTarget.set(x, y + 0.8, 1.05);
+    this.wantPos.set(x, y - dist * 0.97, 1.3 + dist * 0.22);
   }
 
   update(dt: number, shot: Shot, aspect: number) {

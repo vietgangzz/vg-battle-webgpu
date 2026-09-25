@@ -20,6 +20,7 @@ const shots = arg("--shots", "").split(",").filter(Boolean).map(Number);
 /** also shoot a frame this long after every hit */
 const onHit = Number(arg("--on-hit", "-1"));
 const every = Number(arg("--every", "0"));
+const stageIndex = Number(arg("--stage", "0"));
 
 const env = await setup(W, H);
 const { Adventure } = await import("../src/battle/game/adventure");
@@ -51,7 +52,9 @@ const game = new Adventure(player as never, {
   },
   finisher: (s) => log.push(`${t.toFixed(2)} finisher from ${s}`),
 });
-game.start();
+await game.prepare((g) => env.renderer.compileAsync(g, fs.camera, fs.scene) as Promise<void>);
+log.push("prepared");
+game.start(stageIndex);
 
 mkdirSync(out, { recursive: true });
 const dt = 1 / 60;
@@ -77,7 +80,7 @@ for (t = 0; t <= until; t += dt) {
     game.setStick(1, -hero.pos.y * 0.2);
   }
   if (game.phase === "broken") game.finish();
-  if (game.phase === "defeat") game.start(true);
+  if (game.phase === "defeat") game.start(stageIndex, true);
   game.frame(t * 1000);
   if (t >= nextShot) {
     pending.push(t);

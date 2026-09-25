@@ -171,6 +171,12 @@ export class FilmScene {
     TSL.cameraNear,
     TSL.cameraFar,
   );
+  /** planar reflection of everything above z = 0, sharp and blurred (null when disabled) */
+  readonly reflection: BuildEnv["reflection"];
+  /** the film's own sky (the game swaps in other skies) */
+  readonly filmBackground: THREE.Scene["backgroundNode"];
+  /** when set, runs after the film's lights are posed: the caller relights the scene (suns, ambient) */
+  lightOverride: ((r: typeof rig) => void) | null = null;
   /** when set, the caller places the ground's blob shadows (xyz = body centre, w = radius) */
   blobSource: ((out: THREE.Vector4[]) => void) | null = null;
   /** active camera's DOF (null when the shot has none) */
@@ -209,6 +215,7 @@ export class FilmScene {
       this.scene.add(r.target);
       reflection = [t3.fromTSL(r.level(TSL.float(0)).rgb, d.vec3f), t3.fromTSL(r.level(TSL.float(5)).rgb, d.vec3f)];
     }
+    this.reflection = reflection;
     const env: BuildEnv = {
       reflection,
       sceneViewZ: t3.fromTSL(this.sceneViewZ, d.f32),
@@ -218,6 +225,7 @@ export class FilmScene {
     // ---- world
     const w = buildWorld({ fn: "world", blend: "opaque", cull: false, method: "", params: man.world.params }, worldFn, env);
     this.scene.backgroundNode = w.node;
+    this.filmBackground = w.node;
     this.bind("world", w.params);
     const wg = man.world.params.sky_gain?.t;
     const wf = man.world.params.sky_flash?.t;
@@ -486,6 +494,7 @@ export class FilmScene {
     const gain = this.skyGain ? this.skyGain.value(f0) : 1;
     const flash = this.skyFlash ? this.skyFlash.value(f0) : 0;
     rig.ambient.copy(this.ambientBase).multiplyScalar(gain).addScalar(flash * 0.15);
+    this.lightOverride?.(rig);
   }
 
   // ---------------------------------------------------------------- live control (the game)

@@ -14,7 +14,7 @@ import { type Pose, PoseTrack } from "./pose";
 import { FighterRig, type Who } from "./rig";
 import { Tails } from "./tails";
 
-export type Kind = "hero" | "boss" | "shade" | "brute";
+export type Kind = "hero" | "boss" | "captain" | "shade" | "brute";
 
 interface Spec {
   who: Who;
@@ -33,6 +33,8 @@ export const SPECS: Record<Kind, Spec> = {
   boss: { who: "kage", clone: false, scale: 1, hp: 280, speed: 3.4, radius: 0.55, heavy: false },
   shade: { who: "kage", clone: true, scale: 0.72, hp: 30, speed: 2.7, radius: 0.55, heavy: false },
   brute: { who: "kage", clone: true, scale: 1.25, hp: 90, speed: 2.0, radius: 0.55, heavy: true },
+  // the shadow general: a giant clone that fights like KAGE
+  captain: { who: "kage", clone: true, scale: 1.6, hp: 240, speed: 2.7, radius: 0.55, heavy: true },
 };
 
 const DEG = Math.PI / 180;

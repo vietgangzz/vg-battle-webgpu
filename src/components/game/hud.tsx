@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
+  FadeInDown,
+  FadeOut,
   type SharedValue,
   useAnimatedStyle,
   useSharedValue,
@@ -12,9 +14,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 
-import type { HudState } from "@/battle/game/adventure";
+import { BAR_SLOTS, type HudState, type Pop } from "@/battle/game/adventure";
 
 import { ChevronIcon, LittleGiant, PauseIcon } from "./icons";
 import { CRIMSON, INK, IVORY, LIME, ORANGE, UI_FONT } from "./theme";
@@ -28,11 +30,19 @@ export function Hud({
   state,
   energy,
   combo,
+  progress,
+  bars,
+  pops,
+  onPopDone,
   onPause,
 }: {
   state: HudState;
   energy: SharedValue<number>;
   combo: SharedValue<number>;
+  progress: SharedValue<number>;
+  bars: SharedValue<number[]>;
+  pops: Pop[];
+  onPopDone: (id: number) => void;
   onPause: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -42,11 +52,21 @@ export function Hud({
     <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}>
       {playing && (
         <>
+          <LowHealth low={state.hp > 0 && state.hp / state.maxHp < 0.3} />
+          <Markers bars={bars} />
+          {pops.map((p) => (
+            <DamagePop key={p.id} pop={p} onDone={onPopDone} />
+          ))}
           <PlayerPanel hp={state.hp} max={state.maxHp} energy={energy} ready={state.ultReady} top={top} left={Math.max(insets.left, 14) + 6} />
-          {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} top={top + 78} />}
+          {state.boss ? (
+            <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />
+          ) : (
+            <Progress value={progress} marks={state.marks} top={top + 84} />
+          )}
           {!!state.wave && <WavePill text={state.wave} top={top + 4} />}
           <Combo count={state.combo} timer={combo} />
           {state.go && <GoArrow />}
+          {!!state.hint && <Hint text={state.hint} bottom={insets.bottom + 250} />}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right: Math.max(insets.right, 14) + 6 }]}>
             <PauseIcon />
           </Pressable>
@@ -54,6 +74,100 @@ export function Hud({
       )}
       <Banner text={state.banner} sub={state.sub} />
     </View>
+  );
+}
+
+// ---------------------------------------------------------------- over the shadows' heads
+function Markers({ bars }: { bars: SharedValue<number[]> }) {
+  return (
+    <View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}>
+      {Array.from({ length: BAR_SLOTS }, (_, i) => (
+        <Marker key={i} slot={i} bars={bars} />
+      ))}
+    </View>
+  );
+}
+
+function Marker({ slot, bars }: { slot: number; bars: SharedValue<number[]> }) {
+  const box = useAnimatedStyle(() => {
+    const k = slot * 4;
+    const b = bars.value;
+    return { left: `${b[k] * 100}%`, top: `${b[k + 1] * 100}%`, opacity: b[k + 3] };
+  });
+  const fill = useAnimatedStyle(() => ({ width: `${bars.value[slot * 4 + 2] * 100}%` }));
+  return (
+    <Animated.View style={[styles.marker, box]}>
+      <Animated.View style={[styles.markerFill, fill]} />
+    </Animated.View>
+  );
+}
+
+function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => void }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withTiming(1, { duration: pop.kind === "crit" ? 900 : 700, easing: Easing.out(Easing.cubic) });
+    const id = setTimeout(() => onDone(pop.id), 950);
+    return () => clearTimeout(id);
+  }, [t, pop, onDone]);
+  const drift = (pop.id % 5) * 6 - 12;
+  const style = useAnimatedStyle(() => ({
+    opacity: t.value < 0.7 ? 1 : 1 - (t.value - 0.7) / 0.3,
+    transform: [{ translateX: drift * t.value }, { translateY: -46 * t.value }, { scale: t.value < 0.12 ? 0.6 + t.value * 5 : 1.2 - t.value * 0.25 }],
+  }));
+  const color = pop.kind === "hurt" ? CRIMSON : pop.kind === "crit" ? ORANGE : pop.kind === "block" ? IVORY : pop.kind === "parry" ? LIME : "#FFFFFF";
+  const text = pop.kind === "parry" ? "PARRY!" : pop.kind === "block" ? `${pop.value}` : `${pop.value}${pop.kind === "crit" ? "!" : ""}`;
+  return (
+    <Animated.Text style={[styles.pop, { left: `${pop.x * 100}%`, top: `${pop.y * 100}%`, color }, pop.kind === "crit" && styles.popCrit, style]}>
+      {text}
+    </Animated.Text>
+  );
+}
+
+/** Red creeping in from the edges while SORA is near the end. */
+function LowHealth({ low }: { low: boolean }) {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.value = low ? withRepeat(withSequence(withTiming(1, { duration: 520 }), withTiming(0.35, { duration: 520 })), -1) : withTiming(0, { duration: 300 });
+  }, [low, p]);
+  const style = useAnimatedStyle(() => ({ opacity: p.value }));
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }, style]}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="lowHp" cx="50%" cy="50%" r="75%">
+            <Stop offset="0.55" stopColor={CRIMSON} stopOpacity={0} />
+            <Stop offset="1" stopColor={CRIMSON} stopOpacity={0.55} />
+          </RadialGradient>
+        </Defs>
+        <Rect x={0} y={0} width="100%" height="100%" fill="url(#lowHp)" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/** The road ahead: the ambushes and the boss gate along it, SORA's dot moving on. */
+function Progress({ value, marks, top }: { value: SharedValue<number>; marks: number[]; top: number }) {
+  const dot = useAnimatedStyle(() => ({ left: `${value.value * 100}%` }));
+  const fill = useAnimatedStyle(() => ({ width: `${value.value * 100}%` }));
+  return (
+    <View style={[styles.progress, { top, pointerEvents: "none" }]}>
+      <View style={styles.progressTrack}>
+        <Animated.View style={[styles.progressFill, fill]} />
+        {marks.map((m, i) => (
+          <View key={i} style={[i === marks.length - 1 ? styles.progressBoss : styles.progressMark, { left: `${m * 100}%` }]} />
+        ))}
+        <Animated.View style={[styles.progressDot, dot]} />
+      </View>
+    </View>
+  );
+}
+
+function Hint({ text, bottom }: { text: string; bottom: number }) {
+  return (
+    <Animated.View key={text} entering={FadeInDown.duration(320)} exiting={FadeOut.duration(250)} style={[styles.hint, { bottom, pointerEvents: "none" }]}>
+      <View style={styles.hintDot} />
+      <Text style={styles.hintText}>{text}</Text>
+    </Animated.View>
   );
 }
 
@@ -136,7 +250,7 @@ function SlantBar({ frac, color, width, height, flip }: { frac: number; color: s
 }
 
 // ---------------------------------------------------------------- KAGE
-function BossBar({ hp, max, top }: { hp: number; max: number; top: number }) {
+function BossBar({ hp, max, name, title, top }: { hp: number; max: number; name: string; title: string; top: number }) {
   const enter = useSharedValue(0);
   useEffect(() => {
     enter.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
@@ -146,8 +260,8 @@ function BossBar({ hp, max, top }: { hp: number; max: number; top: number }) {
     <Animated.View style={[styles.boss, { top, pointerEvents: "none" }, style]}>
       <View style={styles.bossHead}>
         <LittleGiant size={22} body="#1B1F24" eyes={CRIMSON} />
-        <Text style={styles.bossName}>KAGE</Text>
-        <Text style={styles.bossTitle}>THE SHADOW</Text>
+        <Text style={styles.bossName}>{name}</Text>
+        <Text style={styles.bossTitle}>{title}</Text>
       </View>
       <View style={styles.bossRow}>
         <View style={styles.diamond} />
@@ -258,6 +372,42 @@ export function Slash({ width = 220, color = LIME }: { width?: number; color?: s
 export const textShadow = { textShadowColor: "rgba(0,0,0,0.65)", textShadowRadius: 12, textShadowOffset: { width: 0, height: 2 } };
 
 const styles = StyleSheet.create({
+  marker: {
+    position: "absolute",
+    width: 46,
+    height: 5,
+    marginLeft: -23,
+    borderRadius: 3,
+    backgroundColor: "rgba(18,22,25,0.7)",
+    borderWidth: 1,
+    borderColor: "rgba(245,243,232,0.4)",
+    overflow: "hidden",
+  },
+  markerFill: { height: "100%", backgroundColor: CRIMSON },
+  pop: { position: "absolute", marginLeft: -30, width: 60, textAlign: "center", fontFamily: UI_FONT, fontSize: 18, ...textShadow },
+  popCrit: { fontSize: 24 },
+  progress: { position: "absolute", left: "26%", right: "26%" },
+  progressTrack: { height: 3, borderRadius: 2, backgroundColor: "rgba(245,243,232,0.22)" },
+  progressFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 2, backgroundColor: LIME },
+  progressMark: { position: "absolute", top: -3, width: 9, height: 9, marginLeft: -4.5, backgroundColor: ORANGE, transform: [{ rotate: "45deg" }] },
+  progressBoss: { position: "absolute", top: -5, width: 13, height: 13, marginLeft: -6.5, backgroundColor: CRIMSON, transform: [{ rotate: "45deg" }], borderWidth: 1.5, borderColor: IVORY },
+  progressDot: { position: "absolute", top: -5, width: 13, height: 13, marginLeft: -6.5, borderRadius: 7, backgroundColor: LIME, borderWidth: 2, borderColor: INK },
+  hint: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "rgba(18,22,25,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(213,246,75,0.55)",
+    maxWidth: "86%",
+  },
+  hintDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: LIME },
+  hintText: { color: IVORY, fontFamily: UI_FONT, fontSize: 13, letterSpacing: 0.5 },
   panel: { position: "absolute", flexDirection: "row", alignItems: "center", gap: 10 },
   medallion: { width: 62, height: 62, alignItems: "center", justifyContent: "center" },
   medalFlash: { position: "absolute", width: 58, height: 58, borderRadius: 29, backgroundColor: CRIMSON },

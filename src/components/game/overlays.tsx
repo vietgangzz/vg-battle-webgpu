@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, FadeIn, FadeInDown, useAnimatedStyle, useSharedValue, withDelay, withSpring } from "react-native-reanimated";
 
 import type { Results } from "@/battle/game/adventure";
+import { STAGES } from "@/battle/game/stage";
 
 import { textShadow } from "./hud";
 import { LittleGiant } from "./icons";
@@ -35,7 +36,8 @@ function Scrim({ children, tint = "rgba(10,12,14,0.72)" }: { children: ReactNode
 }
 
 /** STAGE CLEAR: the rank stamps down, then the numbers roll in. */
-export function ResultsCard({ results, onAgain }: { results: Results; onAgain: () => void }) {
+export function ResultsCard({ results, onNext, onAgain, onMenu }: { results: Results; onNext: (() => void) | null; onAgain: () => void; onMenu: () => void }) {
+  const stage = STAGES[results.stage];
   const stamp = useSharedValue(0);
   useEffect(() => {
     stamp.value = withDelay(500, withSpring(1, { damping: 10, stiffness: 160 }));
@@ -55,7 +57,9 @@ export function ResultsCard({ results, onAgain }: { results: Results; onAgain: (
   return (
     <Scrim>
       <Animated.View entering={FadeInDown.duration(420).easing(Easing.out(Easing.cubic))} style={styles.card}>
-        <Text style={styles.kicker}>STAGE 1 · CRIMSON PLAIN</Text>
+        <Text style={styles.kicker}>
+          STAGE {results.stage + 1} · {stage.name}
+        </Text>
         <Text style={[styles.title, { color: LIME }]}>STAGE CLEAR</Text>
         <View style={styles.rankRow}>
           <Animated.Text style={[styles.rank, { color: RANK_COLOR[results.rank] }, rank]}>{results.rank}</Animated.Text>
@@ -69,15 +73,18 @@ export function ResultsCard({ results, onAgain }: { results: Results; onAgain: (
           </View>
         </View>
         <Animated.View entering={FadeIn.delay(1300).duration(400)} style={styles.actions}>
-          <Button label="PLAY AGAIN" onPress={onAgain} primary />
+          {onNext ? <Button label="NEXT STAGE" onPress={onNext} primary /> : <Button label="PLAY AGAIN" onPress={onAgain} primary />}
+          {onNext && <Button label="REPLAY" onPress={onAgain} />}
+          <Button label="MENU" onPress={onMenu} />
         </Animated.View>
+        {!onNext && results.stage === STAGES.length - 1 && <Text style={styles.line}>The shadow is broken. Vietnam is at peace.</Text>}
       </Animated.View>
     </Scrim>
   );
 }
 
 /** Down: try the arena again, or the whole road. */
-export function DefeatCard({ onRetry, onRestart }: { onRetry: () => void; onRestart: () => void }) {
+export function DefeatCard({ onRetry, onRestart, onMenu }: { onRetry: () => void; onRestart: () => void; onMenu: () => void }) {
   return (
     <Scrim tint="rgba(30,4,6,0.66)">
       <Animated.View entering={FadeInDown.delay(900).duration(420)} style={styles.card}>
@@ -87,13 +94,14 @@ export function DefeatCard({ onRetry, onRestart }: { onRetry: () => void; onRest
         <View style={styles.actions}>
           <Button label="RETRY" onPress={onRetry} primary />
           <Button label="RESTART" onPress={onRestart} />
+          <Button label="MENU" onPress={onMenu} />
         </View>
       </Animated.View>
     </Scrim>
   );
 }
 
-export function PauseCard({ onResume, onRestart }: { onResume: () => void; onRestart: () => void }) {
+export function PauseCard({ onResume, onRestart, onSettings, onMenu }: { onResume: () => void; onRestart: () => void; onSettings: () => void; onMenu: () => void }) {
   return (
     <Scrim>
       <View style={styles.card}>
@@ -118,6 +126,10 @@ export function PauseCard({ onResume, onRestart }: { onResume: () => void; onRes
           <Button label="RESUME" onPress={onResume} primary />
           <Button label="RESTART" onPress={onRestart} />
         </View>
+        <View style={styles.actionsSmall}>
+          <Button label="SETTINGS" onPress={onSettings} />
+          <Button label="MENU" onPress={onMenu} />
+        </View>
       </View>
     </Scrim>
   );
@@ -135,7 +147,8 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: "row", justifyContent: "space-between", gap: 18, borderBottomWidth: 1, borderBottomColor: "rgba(245,243,232,0.14)", paddingBottom: 6 },
   statKey: { color: IVORY, opacity: 0.6, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 3 },
   statVal: { color: IVORY, fontFamily: UI_FONT, fontSize: 14, letterSpacing: 1 },
-  actions: { flexDirection: "row", gap: 12, marginTop: 28 },
+  actions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 12, marginTop: 28 },
+  actionsSmall: { flexDirection: "row", gap: 12, marginTop: 12 },
   button: { paddingHorizontal: 26, paddingVertical: 13, borderRadius: 26, borderWidth: 1.5 },
   primary: { backgroundColor: LIME, borderColor: LIME },
   secondary: { backgroundColor: "rgba(18,22,25,0.5)", borderColor: "rgba(245,243,232,0.45)" },

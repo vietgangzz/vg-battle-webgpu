@@ -31,7 +31,7 @@ export interface Pad {
   finish(): void;
 }
 
-type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish";
+export type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish";
 
 interface Button {
   id: ButtonId;
@@ -71,12 +71,18 @@ export function Controls({
   skill,
   ultReady,
   finishable,
+  size: scale = 1,
+  onPress,
 }: {
   pad: Pad;
   energy: SharedValue<number>;
   skill: SharedValue<number>;
   ultReady: boolean;
   finishable: boolean;
+  /** control size setting (0.85 / 1 / 1.15) */
+  size?: number;
+  /** each button press, for haptics */
+  onPress?: (id: ButtonId) => void;
 }) {
   const insets = useSafeAreaInsets();
   const frame = useRef({ x: 0, y: 0, width: 0, height: 0 });
@@ -98,8 +104,8 @@ export function Controls({
     const cx = size.width - ANCHOR.right - insets.right;
     const cy = size.height - ANCHOR.bottom - insets.bottom;
     const list = finishable ? [...CLUSTER, FINISH] : CLUSTER;
-    return list.map((b) => ({ ...b, x: cx + b.dx, y: cy + b.dy }));
-  }, [size, insets, finishable]);
+    return list.map((b) => ({ ...b, r: b.r * scale, x: cx + b.dx * scale, y: cy + b.dy * scale }));
+  }, [size, insets, finishable, scale]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -143,6 +149,7 @@ export function Controls({
       const b = hitButton(x, y);
       if (b) {
         held.current.set(id, b);
+        onPress?.(b);
         if (b === "attack") pad.attack();
         else if (b === "jump") pad.jump();
         else if (b === "dash") pad.dash();
