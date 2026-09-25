@@ -11,11 +11,11 @@ module.exports = {
       bundleIdentifier: "studio.vgang.battle",
       supportsTablet: true,
       requireFullScreen: true,
-      // the film runs edge to edge: no status bar at launch; the screen hides it after
-      // (react-native-screens owns it, which needs view-controller-based appearance)
+      // edge to edge: no status bar, at launch or after (the app-wide setting,
+      // which React Native's StatusBar drives)
       infoPlist: {
         UIStatusBarHidden: true,
-        UIViewControllerBasedStatusBarAppearance: true,
+        UIViewControllerBasedStatusBarAppearance: false,
       },
     },
     android: {

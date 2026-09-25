@@ -99,6 +99,11 @@ export class FilmPlayer {
     return player;
   }
 
+  /** How the film frame maps onto the screen right now. */
+  get view(): Framing {
+    return this.framing;
+  }
+
   get duration() {
     return this.film.duration;
   }
@@ -161,6 +166,22 @@ export class FilmPlayer {
     this.framing = { ...this.framing, intro: 0 };
     this.post.setSeam(0);
     this.post.setUnfoldBlur(0);
+  }
+
+  /**
+   * Render a frame posed by the caller (the game): `pose` sets up the scene and
+   * compositor, then the frame is drawn and presented under the same pacing and
+   * dynamic resolution as the film.
+   */
+  renderPosed(pose: () => void, now = performance.now()) {
+    const since = now - this.lastRender;
+    if (this.lastRender && since < this.budget * 0.9) return false;
+    this.adapt(since);
+    this.lastRender = now;
+    pose();
+    this.post.render();
+    this.context.present();
+    return true;
   }
 
   /** Draw the current frame again right away (after a resize, so no stale or stretched frame shows). */

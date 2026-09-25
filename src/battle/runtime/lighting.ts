@@ -20,7 +20,7 @@ import { d, std } from "typegpu";
 
 export const MAX_SUNS = 4;
 export const MAX_POINTS = 16;
-export const MAX_BLOBS = 2;
+export const MAX_BLOBS = 8;
 
 const vec4s = (n: number) => Array.from({ length: n }, () => new THREE.Vector4());
 

@@ -128,9 +128,18 @@ export class Post {
 
   }
 
-  /** Read this frame's knobs; switch DOF on the shots that use it. */
-  update(frame: number) {
-    for (const k of this.knobs) if (k.track) k.u.value = k.track.value(frame);
+  /**
+   * Read this frame's knobs; switch DOF on the shots that use it. `extra` film
+   * frames (the game's replayed effects) add their change from `frame` on top.
+   */
+  update(frame: number, extra: readonly number[] = []) {
+    for (const k of this.knobs) {
+      if (!k.track) continue;
+      const base = k.track.value(frame);
+      let v = base;
+      for (const f of extra) v += k.track.value(f) - base;
+      k.u.value = v;
+    }
 
     const d = this.fs.dof;
     if (d) {

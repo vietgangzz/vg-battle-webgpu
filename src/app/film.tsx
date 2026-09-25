@@ -1,10 +1,10 @@
 import React, { Suspense } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-// three.js and the generated shaders are large; load them after the first paint
-const GameView = React.lazy(() => import("@/components/game-view").then((m) => ({ default: m.GameView })));
+// the showcase film, played through (the game's source material)
+const BattleView = React.lazy(() => import("@/components/battle-view").then((m) => ({ default: m.BattleView })));
 
-export default function Game() {
+export default function Film() {
   return (
     <Suspense
       fallback={
@@ -13,7 +13,7 @@ export default function Game() {
         </View>
       }
     >
-      <GameView />
+      <BattleView />
     </Suspense>
   );
 }
