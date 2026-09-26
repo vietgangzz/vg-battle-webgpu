@@ -239,7 +239,8 @@ const styles = StyleSheet.create({
   titleBlock: { alignItems: "center", marginBottom: 28 },
   lockup: { width: 180, height: 36, opacity: 0.95, marginBottom: 14 },
   title: { color: IVORY, fontFamily: UI_FONT, fontSize: 42, letterSpacing: 10, transform: [{ skewX: "-8deg" }], ...textShadow },
-  tagline: { color: LIME, fontFamily: UI_FONT, fontSize: 12, letterSpacing: 7, marginTop: 6, ...textShadow },
+  // a darker, wider shadow than the rest: the line sits over a bright sky
+  tagline: { color: LIME, fontFamily: UI_FONT, fontSize: 12, letterSpacing: 7, marginTop: 6, textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 10, textShadowOffset: { width: 0, height: 1 } },
   menuButtons: { alignItems: "center", gap: 12 },
   row: { flexDirection: "row", gap: 12 },
   footer: { position: "absolute", alignSelf: "center", color: IVORY, opacity: 0.45, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 3 },

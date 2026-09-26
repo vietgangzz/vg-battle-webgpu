@@ -8,6 +8,8 @@ module.exports = {
     userInterfaceStyle: "dark",
     backgroundColor: "#000000",
     ios: {
+      // the personal team signs device builds
+      appleTeamId: "SL53MJAWWY",
       bundleIdentifier: "studio.vgang.battle",
       supportsTablet: true,
       requireFullScreen: true,
