@@ -6,7 +6,7 @@
  *  golem        a stone guardian: slow, heavy blows, shrugs off light hits
  *  river_demon  a jade river demon: a trident up close, water orbs from afar
  *  tiger        Ông Ba Mươi, the tiger lord at the pagoda: the valley's boss
- *  tiger_guard  his soldiers, in indigo: quick claws, the odd slam
+ *  tiger_guard  his soldiers, in indigo, barely taller than SORA: quick claws, the odd slam
  *  tiger_brute  his white tigers, in jade: heavy, a slam that shakes the ground
  *
  * A Monster wears the same face to combat.ts as a fighter (position, yaw,
@@ -111,7 +111,7 @@ const SPECS: Record<MonsterKind, Spec> = {
     hp: 38,
     as: "shade",
     heavy: false,
-    radius: 0.45,
+    radius: 0.4,
     walk: 1.4,
     run: 4.3,
     reach: 2.2,
@@ -130,7 +130,7 @@ const SPECS: Record<MonsterKind, Spec> = {
     hp: 100,
     as: "brute",
     heavy: true,
-    radius: 0.75,
+    radius: 0.62,
     walk: 1.2,
     run: 3.0,
     reach: 2.8,

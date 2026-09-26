@@ -108,11 +108,13 @@ if (process.argv.includes("--lineup")) {
   for (let i = 0; i < 90; i++) step();
   const pick = (kind: string) => g.monsters.find((m) => m.kind === kind && !m.alive)!;
   const row: [string, number][] = [
-    ["tiger_guard", -2.6],
+    ["tiger_guard", -2.4],
     ["tiger", 0],
-    ["tiger_brute", 2.8],
+    ["tiger_brute", 2.6],
   ];
-  for (const [kind, dx] of row) pick(kind).place(x + dx, y, ground(x + dx, y), 3, -90);
+  // all facing the camera (yaw 0 looks down -y), SORA at the left end for scale
+  for (const [kind, dx] of row) pick(kind).place(x + dx, y, ground(x + dx, y), 3, 0);
+  hero.place(new THREE.Vector3(x - 4.2, y, 0), 0);
   const z = ground(x, y);
   for (const [label, eye, at, tan] of [
     ["lineup", [x + 0.4, y - 9.5, z + 2.2], [x, y, z + 1.4], 0.42],
