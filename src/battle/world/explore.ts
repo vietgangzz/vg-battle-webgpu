@@ -1163,14 +1163,14 @@ export class Explore {
     };
     const yaw = Math.atan2(me.forward.y, me.forward.x);
     // the spring: pink rings off the ground under her
-    this.bolts.ring(V.set(me.pos.x, me.pos.y, me.groundZ + 0.2), 5, true);
+    this.bolts.groundRing(V.set(me.pos.x, me.pos.y, me.groundZ), 5, true);
     this.bolts.ring(V.set(me.pos.x, me.pos.y, me.pos.z + 0.8), 3, true);
     ring(yaw);
     this.after(0.3, () => ring(yaw + Math.PI / 10));
     this.after(0.62, () => {
       const at = V.set(me.pos.x, me.pos.y, me.groundZ);
       this.bolts.flare(at, me.groundZ, true);
-      this.bolts.ring(V.set(at.x, at.y, me.groundZ + 0.15), 11, true);
+      this.bolts.groundRing(V.set(at.x, at.y, me.groundZ), 11, true);
       this.lotus.bloom(at, me.groundZ);
       this.combat.hitStop(5, 0.45);
       this.events.sound?.("slam");

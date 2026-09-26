@@ -504,6 +504,8 @@ export class WaterOrbs {
     halo.colorNode = TSL.vec4(TSL.vec3(0.3, 1, 0.8).mul(2), TSL.float(1).sub(r).clamp(0, 1).pow(2));
     halo.transparent = true;
     halo.depthWrite = false;
+    // light in the air: never cut off where it meets the ground
+    halo.depthTest = false;
     halo.blending = THREE.AdditiveBlending;
     for (let i = 0; i < 6; i++) {
       const mesh = new THREE.Mesh(geo, core);
