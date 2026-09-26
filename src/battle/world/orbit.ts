@@ -17,6 +17,8 @@ export class OrbitCamera {
   /** above the horizon (radians) */
   pitch = 16 * DEG;
   private dist = 8.6;
+  /** 0..1: how hard SORA is sprinting (the camera eases back and follows closer behind) */
+  sprint = 0;
   /** how far the view is clear of walls behind her (0..1 of dist), eased back out */
   private clear = 1;
   private lastLook = -10;
@@ -47,7 +49,7 @@ export class OrbitCamera {
   ) {
     // the point we look at: SORA, or between her and whoever she is fighting
     const want = new THREE.Vector3(hero.pos.x, hero.pos.y, hero.pos.z + 1.35);
-    let wantDist = 8.6;
+    let wantDist = 8.6 + 1.6 * this.sprint;
     if (foe && !foe.dead) {
       const mid = new THREE.Vector3().lerpVectors(hero.pos, foe.pos, 0.35);
       want.set(mid.x, mid.y, want.z);
@@ -62,7 +64,7 @@ export class OrbitCamera {
 
     // left alone, the camera swings round behind her as she runs
     const moving = hero.wish.lengthSq() > 0.05;
-    if (now - this.lastLook > 1.6 && moving && !foe) {
+    if (now - this.lastLook > (this.sprint > 0.5 ? 0.8 : 1.6) && moving && !foe) {
       const behind = Math.atan2(hero.wish.y, hero.wish.x);
       let d = behind - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));

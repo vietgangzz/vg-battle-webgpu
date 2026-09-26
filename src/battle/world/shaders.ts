@@ -54,8 +54,10 @@ function material(color: () => d.v4f, opts: { side?: THREE.Side; position?: () =
 }
 
 // ---------------------------------------------------------------- the valley floor
-const GRASS_A = d.vec3f(0.1, 0.3, 0.035);
-const GRASS_B = d.vec3f(0.17, 0.38, 0.04);
+const GRASS_A = d.vec3f(0.11, 0.27, 0.05);
+const GRASS_B = d.vec3f(0.19, 0.34, 0.07);
+/** sun-dried patches in the lawn */
+const GRASS_DRY = d.vec3f(0.3, 0.34, 0.12);
 const GRASS_SHADE = d.vec3f(0.025, 0.07, 0.035);
 const DIRT = d.vec3f(0.32, 0.22, 0.12);
 const DIRT_SHADE = d.vec3f(0.09, 0.055, 0.035);
@@ -81,7 +83,14 @@ export function terrainMaterial() {
     const macro = B.noise3(d.vec3f(pw.x * 0.018, pw.y * 0.018, 0), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
     const fine = B.noise3(d.vec3f(pw.x * 0.35, pw.y * 0.35, 0), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0));
     let lit = std.mix(GRASS_A, GRASS_B, std.saturate(macro * 1.4 - 0.2 + (tone.$ - 0.5) * 0.6));
-    lit = std.mul(lit, 0.85 + 0.3 * fine);
+    // a lawn up close: drier patches, clumps, a wind-combed grain and a fine speckle, fading with distance
+    const near = 1 - std.smoothstep(18, 45, std.length(std.sub(t3.cameraPosition.$, pw)));
+    const dry = std.smoothstep(0.58, 0.72, B.noise3(d.vec3f(pw.x * 0.11, pw.y * 0.11, 3), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0)));
+    lit = std.mix(lit, GRASS_DRY, dry * 0.45);
+    const clump = B.noise3(d.vec3f(pw.x * 1.3, pw.y * 1.3, 7), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0));
+    const grain = B.noise3(d.vec3f(pw.x * 2.6 + pw.y * 0.9, pw.y * 7.5, 11), d.f32(1), d.f32(1), 0.5, d.f32(2), d.f32(0));
+    const speck = B.whiteNoise(std.floor(d.vec3f(pw.x * 16, pw.y * 16, 0)));
+    lit = std.mul(lit, 0.88 + 0.24 * fine + near * ((clump - 0.5) * 0.28 + (grain - 0.5) * 0.18 + (speck - 0.5) * 0.12));
     let shade = d.vec3f(GRASS_SHADE);
     // dirt paths, stony at their centre
     const p = std.smoothstep(0.2, 0.75, path.$ + (fine - 0.5) * 0.3);
@@ -184,7 +193,8 @@ const PLANTS: Record<
   lotus: { lit: [0.1, 0.32, 0.08], lit2: [0.14, 0.36, 0.08], shade: [0.03, 0.09, 0.03], wind: 0.05 },
   rock: { lit: [0.34, 0.33, 0.31], lit2: [0.28, 0.3, 0.22], shade: [0.08, 0.08, 0.09], wind: 0 },
   // the meadow round the player: deep roots, sunlit yellow-green tips
-  meadow: { lit: [0.13, 0.37, 0.045], lit2: [0.22, 0.47, 0.055], shade: [0.03, 0.1, 0.035], wind: 0.35, tip: [0.52, 0.66, 0.17] },
+  // the lawn's fuzz: the ground's own greens, tips a touch lighter
+  meadow: { lit: [0.11, 0.28, 0.05], lit2: [0.19, 0.35, 0.07], shade: [0.03, 0.075, 0.035], wind: 0.22, tip: [0.32, 0.46, 0.13] },
   flower: { lit: [0.12, 0.34, 0.05], lit2: [0.18, 0.4, 0.05], shade: [0.03, 0.09, 0.03], wind: 0.45 },
 };
 /** wild flowers: white daisies, violets, buttercups, a few pinks */

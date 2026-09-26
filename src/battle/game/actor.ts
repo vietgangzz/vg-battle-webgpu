@@ -86,6 +86,8 @@ export class Actor {
   /** the fighter's level (the valley's wild shadows grow stronger deeper in), and how hard it hits */
   level = 1;
   power = 1;
+  /** running speed over the spec's (the valley's roomier pace, a sprint) */
+  speedMul = 1;
   pose: Pose = P.IDLE;
   action: Action | null = null;
   /** world-space wish direction and strength (0..1), from the stick or the AI */
@@ -287,7 +289,8 @@ export class Actor {
       }
     } else if (!this.down) {
       this.stance(dt);
-      this.ghostOn = Math.max(0, this.ghostOn - dt * 6);
+      // a sprint leaves faint afterimages
+      this.ghostOn = this.speedMul > 1.5 && this.run > 0.5 ? Math.max(this.ghostOn, 0.45) : Math.max(0, this.ghostOn - dt * 6);
     }
     // the ground under the new position: scripted moves ride it, walkers follow it, jumps fall back to it
     this.groundZ = this.ground ? this.ground(this.pos.x, this.pos.y) : 0;
@@ -341,7 +344,7 @@ export class Actor {
   private stance(dt: number) {
     this.stanceT += dt;
     const target = this.target?.alive ? this.target : null;
-    const speed = this.spec.speed * (this.guardHeld ? GUARD_SLOW : 1) * (this.airborne ? 0.85 : 1);
+    const speed = this.spec.speed * this.speedMul * (this.guardHeld ? GUARD_SLOW : 1) * (this.airborne ? 0.85 : 1);
     const mag = Math.min(this.wish.length(), 1);
     this.pos.x += this.wish.x * speed * dt;
     this.pos.y += this.wish.y * speed * dt;
@@ -354,7 +357,8 @@ export class Actor {
     this.yaw += THREE.MathUtils.clamp(diff, -720 * dt, 720 * dt);
 
     this.run = THREE.MathUtils.damp(this.run, this.airborne ? 0 : mag, 12, dt);
-    this.runPhase += dt * (5.5 + 3 * mag);
+    // quicker strides at a sprint
+    this.runPhase += dt * (5.5 + 3 * mag) * (0.55 + 0.45 * this.speedMul);
     // travel in the fighter's own frame: forward and sideways
     const f = forwardOf(this.yaw, V2);
     const fw = this.wish.x * f.x + this.wish.y * f.y;
@@ -367,7 +371,9 @@ export class Actor {
     let base = P.blend(P.blend(P.IDLE, P.BREATHE, breathe), P.READY, close);
     if (this.run > 0.01) {
       const hop = Math.abs(Math.sin(this.runPhase));
-      const runPose = P.pose(P.blend(P.READY, P.DASH, 0.35), { hop: 0.16 * hop, squash: 0.86 + 0.16 * hop });
+      // a sprint leans hard into the run
+      const sprint = THREE.MathUtils.clamp((this.speedMul - 1.2) / 0.7, 0, 1);
+      const runPose = P.pose(P.blend(P.READY, P.DASH, 0.35 + 0.45 * sprint), { hop: (0.16 + 0.06 * sprint) * hop, squash: 0.86 + 0.16 * hop });
       base = P.blend(base, runPose, this.run);
     }
     if (this.airborne) {

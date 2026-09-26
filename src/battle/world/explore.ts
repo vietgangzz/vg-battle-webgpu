@@ -69,6 +69,9 @@ export interface ExploreMeters {
   skill: number;
   /** the kiếm khí's cooldown (1 = just thrown) */
   shot: number;
+  /** stamina for sprinting (1 = full), and whether it is spent (recovering) */
+  stamina: number;
+  winded: number;
   combo: number;
   /** enemy health bars: x, y (screen fractions), health 0..1, opacity, per slot */
   bars: number[];
@@ -155,6 +158,12 @@ export class Explore {
   readonly bolts: Bolts;
   level = 1;
   xp = 0;
+  /** sprinting: the button held, stamina left, spent (until it recovers), rest since the last sprint */
+  private sprintHeld = false;
+  private stamina = 100;
+  private winded = false;
+  private rested = 0;
+  private sprintFx = 0;
   private readonly wanderRng = rng(77);
   private readonly monsters: Monster[] = [];
   private readonly waterOrbs = new WaterOrbs();
@@ -181,6 +190,8 @@ export class Explore {
     energy: 0,
     skill: 0,
     shot: 0,
+    stamina: 1,
+    winded: 0,
     combo: 0,
     bars: new Array(BAR_SLOTS * 4).fill(0),
     levels: new Array(BAR_SLOTS).fill(0),
@@ -301,6 +312,9 @@ export class Explore {
   shoot() {
     this.combat.press("shoot");
   }
+  setSprint(held: boolean) {
+    this.sprintHeld = held;
+  }
   finish() {}
   setStick(x: number, y: number) {
     this.stick.set(x, y);
@@ -346,6 +360,8 @@ export class Explore {
     }
     this.boss.remove();
     this.applyLevel();
+    this.stamina = 100;
+    this.winded = this.sprintHeld = false;
     if (fresh) {
       const spawn = m.markers.find((k) => k.type === "spawn")!;
       this.checkpoint.set(spawn.at[0], spawn.at[1], 0);
@@ -362,6 +378,8 @@ export class Explore {
       this.hud.objectives.boss = false;
     }
     for (const c of this.camps) if (c.state === "active") c.state = "idle";
+    // back from a fall: the General is waiting in his courtyard again
+    this.hud.objectives.boss = false;
     this.hero.place(this.checkpoint, this.checkpointYaw);
     this.hero.target = null;
     this.combat.reset(!fresh);
@@ -441,6 +459,7 @@ export class Explore {
       if (hero.wish.length() > 1) hero.wish.normalize();
     } else hero.wish.set(0, 0);
 
+    this.sprint(control);
     hero.target = this.nearestFoe(8);
     if (control && dt > 0 && this.combat.control(hero, this.guard, hero.target) === "ult") this.say("HEAVEN PIERCE", "");
     for (const f of this.foes) if (f.active) f.actor.target = hero;
@@ -479,6 +498,8 @@ export class Explore {
     this.meters.energy = c.energy / ENERGY_MAX;
     this.meters.skill = c.skillCooldown / SKILL_COOLDOWN;
     this.meters.shot = c.shootCooldown / SHOOT_COOLDOWN;
+    this.meters.stamina = this.stamina / 100;
+    this.meters.winded = this.winded ? 1 : 0;
     this.meters.combo = c.combo > 1 ? Math.max(0, c.comboT / COMBO_WINDOW) : 0;
     this.meters.map[0] = hero.pos.x;
     this.meters.map[1] = hero.pos.y;
@@ -605,7 +626,7 @@ export class Explore {
     this.hud.objectives.boss = true;
     this.setPhase("bossIntro");
     const boss = this.boss;
-    this.levelFoe(boss, 8, 0.12);
+    this.levelFoe(boss, 6, 0.12, 0.1);
     boss.place(V.set(b.at[0], b.at[1], 0), b.yaw ?? 0);
     boss.play(BOSS_ENTRY, this.hero);
     this.after(0.55 * boss.scale, () => {
@@ -806,7 +827,7 @@ export class Explore {
     this.shownDusk = this.dusk;
     applyLook(this.player.fs, mixLook(MORNING, DUSK, this.dusk));
     // the valley is painted rich: fuller colour and a little more punch than the film
-    this.player.post.grade.saturation.value = 1.2 - 0.06 * this.dusk;
+    this.player.post.grade.saturation.value = 1.12 - 0.05 * this.dusk;
     this.player.post.grade.contrast.value = 1.1;
     LAMP.strength.node.value = 1 + 0.7 * this.dusk;
   }
@@ -829,7 +850,8 @@ export class Explore {
       (from, to) => this.world.clearance(from, to, 0.6),
     );
     // held upright the picture is narrow: widen the lens until it sees as far to the sides as it would lying down
-    fs.setCamera(this.camera.position, this.camera.target, Math.max(0.42, 0.46 / player.view.aspect), player.view);
+    // a sprint widens the lens a touch: the speed reads in the edges of the frame
+    fs.setCamera(this.camera.position, this.camera.target, Math.max(0.42, 0.46 / player.view.aspect) * (1 + 0.09 * this.camera.sprint), player.view);
     this.world.update(this.camera.position);
     this.updateBars();
     this.events.meters?.(this.meters);
@@ -873,6 +895,39 @@ export class Explore {
     if (key === this.hudKey) return;
     this.hudKey = key;
     this.events.hud?.({ ...h, boss: h.boss && { ...h.boss }, objectives: { ...h.objectives, lit: [...h.objectives.lit], cleared: [...h.objectives.cleared] }, results: h.results && { ...h.results } });
+  }
+
+  // ---------------------------------------------------------------- sprinting
+  /**
+   * The valley's pace: a roomier run than the stage roads, and a sprint while
+   * the button is held that burns stamina (it refills after a short rest; run
+   * it dry and she must catch her breath before sprinting again).
+   */
+  private sprint(control: boolean) {
+    const hero = this.hero;
+    const moving = control && hero.wish.length() > 0.3 && !hero.busy && !hero.airborne;
+    const sprinting = this.sprintHeld && moving && !this.winded && this.stamina > 0;
+    if (sprinting) {
+      this.stamina = Math.max(0, this.stamina - 20 * DT);
+      this.rested = 0;
+      if (this.stamina <= 0) {
+        this.winded = true;
+        this.events.sound?.("down");
+      }
+      // a gust at her heels as the sprint starts, and again every so often
+      this.sprintFx -= DT;
+      if (this.sprintFx <= 0) {
+        this.fx.fire("dashSora", this.time, V.set(hero.pos.x, hero.pos.y, hero.groundZ), hero.yaw, 0.02);
+        this.sprintFx = 1.1;
+      }
+    } else {
+      this.sprintFx = 0;
+      this.rested += DT;
+      if (this.rested > 0.6) this.stamina = Math.min(100, this.stamina + 32 * DT);
+      if (this.winded && this.stamina >= 30) this.winded = false;
+    }
+    hero.speedMul = !control ? 1 : sprinting ? 2.0 : 1.18;
+    this.camera.sprint += ((sprinting ? 1 : 0) - this.camera.sprint) * Math.min(1, DT * 3);
   }
 
   // ---------------------------------------------------------------- the ranged cast
@@ -985,10 +1040,10 @@ export class Explore {
   }
 
   /** A foe's strength for its level (health grows faster than its blows). */
-  private levelFoe(a: Actor, level: number, growth = 0.35) {
+  private levelFoe(a: Actor, level: number, growth = 0.35, might = 0.14) {
     a.level = level;
     a.maxHp = Math.round(a.spec.hp * (1 + growth * (level - 1)));
-    a.power = 1 + 0.14 * (level - 1);
+    a.power = 1 + might * (level - 1);
   }
 
   // ---------------------------------------------------------------- experience

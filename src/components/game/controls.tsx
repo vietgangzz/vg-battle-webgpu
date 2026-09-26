@@ -19,8 +19,8 @@ import Svg, { Circle, Path } from "react-native-svg";
 
 import { SKILL_COOLDOWN } from "@/battle/game/combat";
 
-import { BladeIcon, BloomIcon, DashIcon, GuardIcon, JumpIcon, StreakIcon, WaveIcon } from "./icons";
-import { INK, IVORY, LIME, UI_FONT } from "./theme";
+import { BladeIcon, BloomIcon, DashIcon, GuardIcon, JumpIcon, SprintIcon, StreakIcon, WaveIcon } from "./icons";
+import { INK, IVORY, LIME, ORANGE, UI_FONT } from "./theme";
 
 const ACircle = Animated.createAnimatedComponent(Circle);
 const AnimatedText = Animated.createAnimatedComponent(TextInput);
@@ -37,11 +37,13 @@ export interface Pad {
   finish(): void;
   /** throw kiếm khí (the valley has it; the stage roads do not) */
   shoot?(): void;
+  /** sprint while held (the valley) */
+  setSprint?(held: boolean): void;
   /** turn the camera (a drag on the right side, off the buttons), in points */
   look?(dx: number, dy: number): void;
 }
 
-export type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish" | "shoot";
+export type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish" | "shoot" | "sprint";
 
 interface Button {
   id: ButtonId;
@@ -67,6 +69,7 @@ const CLUSTER: Button[] = [
   { id: "ult", ...at(236, 168), r: 33 },
   { id: "guard", ...at(186, 164), r: 25 },
   { id: "shoot", ...at(211, 166), r: 28 },
+  { id: "sprint", ...at(262, 168), r: 28 },
 ];
 const FINISH: Button = { id: "finish", ...at(232, 250), r: 48 };
 /** attack button centre from the bottom-right corner */
@@ -95,12 +98,17 @@ export function Controls({
   size: scale = 1,
   onPress,
   shot,
+  stamina,
+  winded,
 }: {
   pad: Pad;
   energy: SharedValue<number>;
   skill: SharedValue<number>;
   /** kiếm khí cooldown (0..1), when the pad can shoot */
   shot?: SharedValue<number>;
+  /** sprint stamina (0..1) and whether it is spent, when the pad can sprint */
+  stamina?: SharedValue<number>;
+  winded?: SharedValue<number>;
   ultReady: boolean;
   finishable: boolean;
   /** control size setting (0.85 / 1 / 1.15) */
@@ -136,7 +144,7 @@ export function Controls({
     const k = scale * fit;
     const cx = size.width - ANCHOR.right * fit - sideR;
     const cy = size.height - ANCHOR.bottom * fit - insets.bottom;
-    const cluster = CLUSTER.filter((b) => b.id !== "shoot" || !!pad.shoot);
+    const cluster = CLUSTER.filter((b) => (b.id !== "shoot" || !!pad.shoot) && (b.id !== "sprint" || !!pad.setSprint));
     const list = finishable ? [...cluster, FINISH] : cluster;
     return list.map((b) => ({ ...b, r: b.r * k, x: cx + b.dx * k, y: cy + b.dy * k }));
   }, [size, insets.bottom, sideR, finishable, scale, pad]);
@@ -175,6 +183,7 @@ export function Controls({
     const now = new Set(held.current.values());
     setPressed(Object.fromEntries([...now].map((id) => [id, true])));
     pad.setGuard(now.has("guard"));
+    pad.setSprint?.(now.has("sprint"));
   };
 
   const wake = (touching: boolean) => {
@@ -289,7 +298,15 @@ export function Controls({
       <Stick baseX={baseX} baseY={baseY} knobX={knobX} knobY={knobY} active={active} />
       <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }, cluster]}>
         {buttons.map((b) => (
-          <ActionButton key={b.id} b={b} down={!!pressed[b.id]} energy={energy} skill={b.id === "shoot" && shot ? shot : skill} ultReady={ultReady} />
+          <ActionButton
+            key={b.id}
+            b={b}
+            down={!!pressed[b.id]}
+            energy={b.id === "sprint" && stamina ? stamina : energy}
+            skill={b.id === "shoot" && shot ? shot : skill}
+            winded={winded}
+            ultReady={ultReady}
+          />
         ))}
       </Animated.View>
     </View>
@@ -359,6 +376,7 @@ const ICONS: Record<ButtonId, (color: string, r: number) => ReactNode> = {
   ult: (c, r) => <BloomIcon size={r * 1.25} color={c} />,
   finish: (c, r) => <BloomIcon size={r * 0.95} color={c} />,
   shoot: (c, r) => <WaveIcon size={r * 1.0} color={c} />,
+  sprint: (c, r) => <SprintIcon size={r * 0.95} color={c} />,
 };
 
 /**
@@ -372,12 +390,15 @@ function ActionButton({
   energy,
   skill,
   ultReady,
+  winded,
 }: {
   b: Button & { x: number; y: number };
   down: boolean;
+  /** the ultimate's charge, or the sprint button's stamina */
   energy: SharedValue<number>;
   skill: SharedValue<number>;
   ultReady: boolean;
+  winded?: SharedValue<number>;
 }) {
   const r = b.r;
   const PAD = 10;
@@ -433,6 +454,10 @@ function ActionButton({
   const ring = r + 3.5;
   const ringC = 2 * Math.PI * ring;
   const charge = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value) }));
+  // the sprint's stamina: lime while there is breath, orange while she catches it
+  const isSprint = id === "sprint";
+  const breath = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value), strokeOpacity: winded && winded.value > 0 ? 0 : 1 }));
+  const gasp = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value), strokeOpacity: winded && winded.value > 0 ? 1 : 0 }));
 
   const iconColor = solid ? INK : IVORY;
 
@@ -462,6 +487,35 @@ function ActionButton({
               animatedProps={pie}
               transform={`rotate(-90 ${c} ${c})`}
             />
+          )}
+          {isSprint && (
+            <>
+              <Circle cx={c} cy={c} r={ring} fill="none" stroke={IVORY} strokeOpacity={0.14} strokeWidth={2.5} />
+              <ACircle
+                cx={c}
+                cy={c}
+                r={ring}
+                fill="none"
+                stroke={LIME}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeDasharray={`${ringC} ${ringC}`}
+                animatedProps={breath}
+                transform={`rotate(-90 ${c} ${c})`}
+              />
+              <ACircle
+                cx={c}
+                cy={c}
+                r={ring}
+                fill="none"
+                stroke={ORANGE}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeDasharray={`${ringC} ${ringC}`}
+                animatedProps={gasp}
+                transform={`rotate(-90 ${c} ${c})`}
+              />
+            </>
           )}
           {isUlt && !ultReady && (
             <>

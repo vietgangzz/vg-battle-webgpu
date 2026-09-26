@@ -94,6 +94,8 @@ export function GameView() {
   const energy = useSharedValue(0);
   const skill = useSharedValue(0);
   const shot = useSharedValue(0);
+  const stamina = useSharedValue(1);
+  const winded = useSharedValue(0);
   const levels = useSharedValue<number[]>(new Array(BAR_SLOTS).fill(0));
   const combo = useSharedValue(0);
   const progress = useSharedValue(0);
@@ -244,6 +246,8 @@ export function GameView() {
             energy.value = m.energy;
             skill.value = m.skill;
             shot.value = m.shot;
+            stamina.value = m.stamina;
+            winded.value = m.winded;
             combo.value = m.combo;
             bars.value = [...m.bars];
             levels.value = [...m.levels];
@@ -372,6 +376,8 @@ export function GameView() {
             <Controls
               pad={roam.game}
               shot={shot}
+              stamina={stamina}
+              winded={winded}
               energy={energy}
               skill={skill}
               ultReady={world.ultReady}

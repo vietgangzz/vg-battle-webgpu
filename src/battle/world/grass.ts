@@ -14,58 +14,44 @@ import type { Heightfield, WorldData } from "./data";
 import { plantMaterial } from "./shaders";
 
 /** metres of meadow round the camera, and the lattice spacing */
-const RADIUS = 24;
-const CELL = 0.56;
+const RADIUS = 22;
+const CELL = 0.42;
 /** rebuild when the camera has moved this far */
 const STEP = 2.5;
 
 // ---------------------------------------------------------------- the tuft
 /**
- * A tuft of curved, tapering blades: dark at the root, free at the tip.
- * Attributes match the plant material: leaf (1 = leaf), ao (root dark), sway (0 root .. 1 tip).
+ * A tuft of short, fine blades, each a single thin triangle leaning out from
+ * the root: a lawn's fuzz, not a clump. Normals point straight up, so the
+ * blades take the light exactly as the ground under them does and the carpet
+ * reads as one surface. Attributes match the plant material: leaf (1 = leaf),
+ * ao (a little darker at the root), sway (0 root .. 1 tip).
  */
-function tuftGeometry(blades: number, height: number, seed: number) {
+function tuftGeometry(blades: number, height: number, spread: number, seed: number) {
   const pos: number[] = [];
   const nrm: number[] = [];
   const leaf: number[] = [];
   const ao: number[] = [];
   const sway: number[] = [];
-  const idx: number[] = [];
   let r = seed;
   const rnd = () => ((r = (r * 16807) % 2147483647) / 2147483647);
-  const SEG = 2;
   for (let b = 0; b < blades; b++) {
+    const a = rnd() * Math.PI * 2;
+    const d = Math.sqrt(rnd()) * spread;
+    const ox = Math.cos(a) * d;
+    const oy = Math.sin(a) * d;
     const yaw = rnd() * Math.PI * 2;
-    const lean = 0.12 + rnd() * 0.28;
-    const h = height * (0.55 + rnd() * 0.6);
-    const w = 0.045 + rnd() * 0.03;
-    const ox = (rnd() - 0.5) * 0.22;
-    const oy = (rnd() - 0.5) * 0.22;
-    const dx = Math.cos(yaw);
-    const dy = Math.sin(yaw);
-    // the blade's face is across its lean direction
-    const px = -dy;
-    const py = dx;
-    const base = pos.length / 3;
-    for (let s = 0; s <= SEG; s++) {
-      const t = s / SEG;
-      const bend = lean * t * t * h;
-      const cx = ox + dx * bend;
-      const cy = oy + dy * bend;
-      const cz = h * t * (1 - lean * 0.25 * t);
-      const half = w * (1 - t * 0.92);
-      pos.push(cx - px * half, cy - py * half, cz, cx + px * half, cy + py * half, cz);
-      // normals tip toward the sky and out along the lean (soft, like a meadow seen from afar)
-      const nz = 0.92;
-      nrm.push(dx * 0.35, dy * 0.35, nz, dx * 0.35, dy * 0.35, nz);
-      leaf.push(1, 1);
-      ao.push(0.25 + 0.75 * t, 0.25 + 0.75 * t);
-      sway.push(t * t, t * t);
-      if (s < SEG) {
-        const i = base + s * 2;
-        idx.push(i, i + 1, i + 3, i, i + 3, i + 2);
-      }
-    }
+    const h = height * (0.55 + rnd() * 0.7);
+    const w = 0.012 + rnd() * 0.012;
+    const lean = (0.15 + rnd() * 0.35) * h;
+    const px = Math.cos(yaw);
+    const py = Math.sin(yaw);
+    // the root's two corners across the blade, the tip out along its lean
+    pos.push(ox - py * w, oy + px * w, 0, ox + py * w, oy - px * w, 0, ox + px * lean, oy + py * lean, h);
+    for (let k = 0; k < 3; k++) nrm.push(0, 0, 1);
+    leaf.push(1, 1, 1);
+    ao.push(0.62, 0.62, 1);
+    sway.push(0, 0, 1);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -73,7 +59,6 @@ function tuftGeometry(blades: number, height: number, seed: number) {
   g.setAttribute("leaf", new THREE.Float32BufferAttribute(leaf, 1));
   g.setAttribute("ao", new THREE.Float32BufferAttribute(ao, 1));
   g.setAttribute("sway", new THREE.Float32BufferAttribute(sway, 1));
-  g.setIndex(idx);
   return g;
 }
 
@@ -85,7 +70,7 @@ function flowerGeometry() {
   const ao: number[] = [];
   const sway: number[] = [];
   const idx: number[] = [];
-  const H = 0.3;
+  const H = 0.17;
   // stem: a thin card
   pos.push(-0.01, 0, 0, 0.01, 0, 0, 0.01, 0, H, -0.01, 0, H);
   for (let i = 0; i < 4; i++) nrm.push(0, -1, 0.3);
@@ -102,8 +87,8 @@ function flowerGeometry() {
   sway.push(1);
   for (let k = 0; k < 10; k++) {
     const a = (k / 10) * Math.PI * 2;
-    const r = k % 2 === 0 ? 0.11 : 0.045;
-    pos.push(Math.cos(a) * r, Math.sin(a) * r, H + (k % 2 === 0 ? 0.01 : 0.02));
+    const r = k % 2 === 0 ? 0.05 : 0.022;
+    pos.push(Math.cos(a) * r, Math.sin(a) * r, H + (k % 2 === 0 ? 0.005 : 0.012));
     nrm.push(0, 0, 1);
     leaf.push(2);
     ao.push(1);
@@ -200,7 +185,7 @@ export class Meadow {
   ) {
     this.masks = new Masks(data);
     // a few tuft shapes would be nicer, but one shape turned and scaled per instance reads as a meadow already
-    this.grass = this.layer(tuftGeometry(7, 0.34, 7), plantMaterial("meadow"), 7500, noReflect);
+    this.grass = this.layer(tuftGeometry(16, 0.19, 0.3, 7), plantMaterial("meadow"), 9000, noReflect);
     this.flowers = this.layer(flowerGeometry(), plantMaterial("flower"), 1600, noReflect);
   }
 
@@ -247,7 +232,7 @@ export class Meadow {
         const dist = Math.hypot(x - cam.x, y - cam.y);
         if (dist > RADIUS) continue;
         // thinning with distance: all of them close in, a third at the rim
-        const keep = 1 - 0.7 * Math.min(1, Math.max(0, (dist - 10) / (RADIUS - 10)));
+        const keep = 1 - 0.6 * Math.min(1, Math.max(0, (dist - 8) / (RADIUS - 8)));
         if (h0 > keep) continue;
         const bad = this.masks.at(x, y);
         if (bad > 0.35) continue;
@@ -264,10 +249,12 @@ export class Meadow {
         // shrink to nothing over the last metres, and where the ground is turning bare
         const edge = 1 - Math.min(1, Math.max(0, (dist - (RADIUS - 6)) / 6));
         const lush = 1 - Math.min(1, bad / 0.35);
-        const scale = (0.75 + 0.55 * hash(i, j, 4)) * edge * (0.45 + 0.55 * lush);
+        const scale = (0.8 + 0.45 * hash(i, j, 4)) * edge * (0.45 + 0.55 * lush);
         if (scale < 0.05) continue;
         const yaw = hash(i, j, 5) * Math.PI * 2;
-        const flower = hash(i, j, 6) < 0.09 && dist < 20;
+        // wild flowers grow in drifts, not evenly: a few patches, sparse within
+        const drift = hash(i >> 4, j >> 4, 11) < 0.3;
+        const flower = drift && hash(i, j, 6) < 0.1 && dist < 18;
         if (flower && nf < this.flowers.cap) {
           const o = nf++ * 5;
           f[o] = x;

@@ -107,6 +107,8 @@ for (t = 0; t <= until; t += 1 / 60) {
   const wx = d > (foe ? 2.3 : 0.5) ? dx / d : 0;
   const wy = d > (foe ? 2.3 : 0.5) ? dy / d : 0;
   game.setStick(wx * Math.sin(yaw) - wy * Math.cos(yaw), wx * Math.cos(yaw) + wy * Math.sin(yaw));
+  // sprint on the long walks
+  game.setSprint(!foe && d > 8);
   // from range, throw kiếm khí
   const near = hero.target;
   if (near && hero.pos.distanceTo(near.pos) > 4.5 && hero.pos.distanceTo(near.pos) < 16 && t > press) {

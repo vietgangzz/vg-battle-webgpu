@@ -65,6 +65,17 @@ export function StreakIcon({ size = 24, color = IVORY }: IconProps) {
   );
 }
 
+/** Sprint: two bold chevrons driving forward, wind streaming off them. */
+export function SprintIcon({ size = 24, color = IVORY }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 48 48">
+      <Path d="M17 12 L29 24 L17 36" {...stroke(color, 4.2)} />
+      <Path d="M28 12 L40 24 L28 36" {...stroke(color, 4.2)} />
+      <Path d="M5 18 H12 M3 24 H13 M5 30 H12" {...stroke(color, 2.4)} opacity={0.5} />
+    </Svg>
+  );
+}
+
 /** Kiếm khí: a crescent of sword light flying out, with its wake. */
 export function WaveIcon({ size = 24, color = IVORY }: IconProps) {
   return (
