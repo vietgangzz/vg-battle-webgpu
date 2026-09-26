@@ -8,11 +8,14 @@
  *  foliage  soft cel-shaded crowns that glow when backlit, swaying in the wind
  *  blades   grass, reeds and rice: dark roots to sunlit tips, bending in gusts
  *  prop     built pieces, banded from their vertex colour
+ *  hero     the Meshy pieces (pagoda, gate, houses, boats, guardians): their
+ *           painted texture under the same light, in softer bands
  *
  * Instanced plants read rows of (x, y, z, yaw, scale) and are placed, turned
  * and blown in the vertex stage; everything fades into the height fog.
  */
 import * as t3 from "@typegpu/three";
+import * as TSL from "three/tsl";
 import * as THREE from "three/webgpu";
 import { d, std } from "typegpu";
 
@@ -267,6 +270,31 @@ export function propMaterial() {
     const shade = std.mul(base, 0.28);
     let c = std.add(std.mix(shade, lit, k), std.mul(std.mul(e, lit), 0.06));
     c = std.add(c, std.mul(U.skyHorizon.$, std.smoothstep(0.7, 0.95, facing(n, v)) * 0.1));
+    return d.vec4f(fog(c, pw), 1);
+  });
+}
+
+// ---------------------------------------------------------------- the hero pieces
+/**
+ * A painted model: its texture is the colour; the light still bands it like
+ * everything else in the valley, only softer, so the painting keeps its detail.
+ */
+export function heroMaterial(tex: THREE.Texture) {
+  const albedo = t3.fromTSL(TSL.texture(tex, TSL.uv()), d.vec4f);
+  return material(() => {
+    "use gpu";
+    const pw = t3.positionWorld.$;
+    const n = std.normalize(t3.normalWorld.$);
+    const v = std.normalize(std.sub(t3.cameraPosition.$, pw));
+    const e = diffuse(pw, n, true);
+    const lum = e.x * 0.2126 + e.y * 0.7152 + e.z * 0.0722;
+    // two soft bands instead of three hard ones
+    const k = std.smoothstep(0.05, 0.2, lum) * 0.55 + std.smoothstep(0.2, 0.32, lum) * 0.45;
+    const base = albedo.$.xyz;
+    const lit = std.mul(base, 1.08);
+    const shade = std.mul(std.mul(base, U.skyHorizon.$), 0.5);
+    let c = std.add(std.mix(shade, lit, k), std.mul(std.mul(e, base), 0.08));
+    c = std.add(c, std.mul(U.skyHorizon.$, std.smoothstep(0.7, 0.95, facing(n, v)) * 0.08));
     return d.vec4f(fog(c, pw), 1);
   });
 }

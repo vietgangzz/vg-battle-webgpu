@@ -26,7 +26,8 @@ export interface WorldManifest {
   water: number;
   heightfield: { o: number; n: number; x0: number; cell: number };
   meshes: WorldMesh[];
-  statics: { name: string; mesh: number; kind: "terrain" | "karst" | "prop" }[];
+  /** `tex`: rows of sRGB bytes (RGB, bottom row first) for a hero piece's painted texture */
+  statics: { name: string; mesh: number; kind: "terrain" | "karst" | "prop" | "hero"; tex?: { o: number; w: number; h: number } }[];
   instances: { name: string; mesh: number; kind: InstanceKind; count: number; chunks: WorldChunk[] }[];
   colliders: { x: number; y: number; r: number }[];
   markers: { name: string; type: "spawn" | "shrine" | "camp" | "boss"; at: [number, number]; z: number; yaw?: number; waves?: number }[];
@@ -52,6 +53,10 @@ export class WorldData {
 
   u32(offset: number, length: number) {
     return new Uint32Array(this.blob, offset, length);
+  }
+
+  u8(offset: number, length: number) {
+    return new Uint8Array(this.blob, offset, length);
   }
 }
 

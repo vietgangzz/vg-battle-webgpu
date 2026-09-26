@@ -8,7 +8,7 @@ import * as THREE from "three/webgpu";
 import { water } from "../game/shading";
 import type { FilmScene } from "../runtime/scene";
 import { Heightfield, type WorldData, type WorldMesh } from "./data";
-import { karstMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
+import { heroMaterial, karstMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
 
 /** Plants that only matter up close (and never in the water's reflection). */
 const NEAR: Record<string, number> = { grass: 45, rice: 80, reed: 70, shrub: 110, lotus: 90, karstShrub: 400, boulder: 140 };
@@ -43,7 +43,14 @@ export class World {
     const geos = m.meshes.map((me) => this.geometry(me));
 
     for (const s of m.statics) {
-      const mat = s.kind === "terrain" ? terrainMaterial() : s.kind === "karst" ? karstMaterial() : propMaterial();
+      const mat =
+        s.kind === "terrain"
+          ? terrainMaterial()
+          : s.kind === "karst"
+            ? karstMaterial()
+            : s.kind === "hero" && s.tex
+              ? heroMaterial(this.texture(s.tex))
+              : propMaterial();
       const mesh = new THREE.Mesh(geos[s.mesh], mat);
       mesh.name = `world:${s.name}`;
       mesh.frustumCulled = s.kind !== "terrain";
@@ -85,6 +92,29 @@ export class World {
     fs.camera.layers.enable(NO_REFLECT);
     this.group.visible = false;
     fs.scene.add(this.group);
+  }
+
+  /** A hero piece's painted texture: RGB rows from the blob, widened to RGBA, mipmapped. */
+  private texture(t: { o: number; w: number; h: number }) {
+    const rgb = this.data.u8(t.o, t.w * t.h * 3);
+    const rgba = new Uint8Array(t.w * t.h * 4);
+    for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+      rgba[j] = rgb[i];
+      rgba[j + 1] = rgb[i + 1];
+      rgba[j + 2] = rgb[i + 2];
+      rgba[j + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(rgba, t.w, t.h, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    // rows run bottom-up, as Blender's UVs do
+    tex.flipY = false;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    return tex;
   }
 
   private geometry(me: WorldMesh) {

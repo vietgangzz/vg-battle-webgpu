@@ -48,7 +48,14 @@ const follow = (name: string, x: number, y: number, dir: number, back = 6.5, up 
   const z = hz(x, y);
   return { name, sora: [x, y], eye: [x - fx * back, y - fy * back, z + up], at: [x + fx * 9, y + fy * 9, z + 1.4] };
 };
+const only = arg("--only", "");
 const views: View[] = [
+  follow("spawn", -104, -37, 0.733),
+  follow("stairs", 42, 56, 0.695, 7.5, 3.2),
+  follow("courtyard", 62, 74, 0.695, 7.5, 3),
+  follow("hall", 66, 78, 0.695, 5, 2.4),
+  { name: "temple", eye: [30, 40, 26], at: [66, 78, 12] },
+  follow("river", -86, -4, 1.4, 7, 3),
   follow("village", -104, -30, 0.6),
   follow("towpath", -76, -16, 0.1),
   follow("bridge", -24, -26, 1.45),
@@ -63,7 +70,7 @@ mkdirSync(out, { recursive: true });
 fs.pose([100], [null]);
 await renderer.compileAsync(fs.scene, fs.camera);
 let i = 0;
-for (const v of views) {
+for (const v of views.filter((w) => !only || only.split(",").includes(w.name))) {
   const [sx, sy] = v.sora ?? [spawn.at[0], spawn.at[1]];
   sora.place(new THREE.Vector3(sx, sy, hz(sx, sy)), Math.atan2(v.eye[0] - sx, -(v.eye[1] - sy)) * (180 / Math.PI));
   sora.pos.z = hz(sx, sy);

@@ -53,7 +53,8 @@ export function ExploreHud({
           <PlayerPanel hp={state.hp} max={state.maxHp} energy={energy} ready={state.ultReady} top={top} left={left} />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
           <Minimap manifest={manifest} state={state} map={map} top={top + 50} right={right} />
-          <Quests state={state} top={top + 96} left={left} />
+          {/* the boss's bar takes the top of the screen; the tracker steps aside for the fight */}
+          {!state.boss && <Quests state={state} top={top + 96} left={left} />}
           <Combo count={state.combo} timer={combo} />
           {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 50 + MAP + 70} />}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right }]}>
