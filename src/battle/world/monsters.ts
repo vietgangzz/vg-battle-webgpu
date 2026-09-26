@@ -166,6 +166,9 @@ export class Monster {
   private clock = 0;
   /** the "!" over its head when it first notices SORA */
   private readonly alert: THREE.Sprite;
+  get alertSprite() {
+    return this.alert;
+  }
   private alertT = -1;
   private wasAggro = false;
 

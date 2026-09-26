@@ -26,6 +26,7 @@ const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOf
 const world = new World(data, fs);
 world.group.visible = true;
 applyLook(fs, MORNING);
+post.setLite(true);
 for (const n of ["kage_body", "kage_eye0", "kage_eye1", "kage_band", "kage_hand_r", "kage_hand_l", "kage_blade", "kage_tail0", "kage_tail1"]) fs.object(n).visible = false;
 
 const views: Record<string, [[number, number, number], [number, number, number]]> = {

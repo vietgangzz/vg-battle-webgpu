@@ -261,6 +261,7 @@ export function GameView() {
         ex.setProgress(heroSave.current.level, heroSave.current.xp);
         ex.world.group.visible = true;
         await p.renderer.compileAsync(ex.world.group, p.fs.camera, p.fs.scene);
+        await ex.warm((o) => p.renderer.compileAsync(o, p.fs.camera, p.fs.scene));
         ex.world.group.visible = false;
         explore.current = ex;
         setRoam({ game: ex, manifest: wd.manifest });

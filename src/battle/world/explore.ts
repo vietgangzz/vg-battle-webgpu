@@ -332,6 +332,7 @@ export class Explore {
     const fs = this.player.fs;
     const m = this.world.data.manifest;
     this.world.group.visible = true;
+    this.player.post.setLite(true);
     applyLook(fs, MORNING);
     this.shownDusk = -1;
     fs.setExternal(this.externals, true);
@@ -397,7 +398,8 @@ export class Explore {
   leave() {
     const fs = this.player.fs;
     this.world.group.visible = false;
-    // the film and the stages are graded as filmed
+    // the film and the stages are graded as filmed, through the full chain
+    this.player.post.setLite(false);
     this.player.post.grade.saturation.value = 1;
     this.player.post.grade.contrast.value = 1;
     fs.setExternal(this.externals, false);
@@ -830,6 +832,7 @@ export class Explore {
     this.player.post.grade.saturation.value = 1.12 - 0.05 * this.dusk;
     this.player.post.grade.contrast.value = 1.1;
     LAMP.strength.node.value = 1 + 0.7 * this.dusk;
+    this.world.evening = this.dusk;
   }
 
   private pose() {
@@ -950,12 +953,39 @@ export class Explore {
     this.events.sound?.("wave");
   }
 
-  /** Show every monster for a moment (so their shaders compile with the world's), then hide them again. */
-  showMonsters(on: boolean) {
-    this.monsters.forEach((m, i) => {
-      m.body.root.visible = on;
-      if (on) m.body.root.position.set(this.hero.pos.x + (i % 4), this.hero.pos.y + Math.floor(i / 4), this.hero.pos.z);
-    });
+  /**
+   * Compile, one at a time, what only appears mid-play (a monster of each
+   * kind, the kiếm khí, the water orbs, the alert and the level-up flare), so
+   * nothing stalls a frame the first time it shows. One at a time: things
+   * sharing a texture must not be set up in parallel.
+   */
+  async warm(compile: (o: THREE.Object3D) => Promise<unknown>) {
+    const group = this.world.group;
+    const was = group.visible;
+    group.visible = true;
+    const show = async (o: THREE.Object3D) => {
+      const hidden: THREE.Object3D[] = [];
+      o.traverse((c) => {
+        if (!c.visible) {
+          hidden.push(c);
+          c.visible = true;
+        }
+      });
+      await compile(o);
+      for (const c of hidden) c.visible = false;
+    };
+    const kinds = new Set<string>();
+    for (const m of this.monsters) {
+      if (kinds.has(m.kind)) continue;
+      kinds.add(m.kind);
+      m.body.root.position.copy(this.hero.pos);
+      await show(m.body.root);
+    }
+    const alert = this.monsters[0]?.alertSprite;
+    if (alert) await show(alert);
+    await show(this.bolts.group);
+    await show(this.waterOrbs.group);
+    group.visible = was;
   }
 
   // ---------------------------------------------------------------- wild packs

@@ -56,6 +56,10 @@ export class Post {
   /** output graphs by variant: DOF on/off x star streaks on/off (each costs passes only when used) */
   private readonly variants = new Map<string, N>();
   private readonly build: (dof: boolean, streak: boolean, blur: boolean) => N;
+  /** the game's lighter chain: one bloom, no lens, no volumes (see setLite) */
+  private readonly buildLite: () => N;
+  private liteNode: N | null = null;
+  private lite = false;
   private variant = "";
   private readonly streakKnob: Knob;
   private readonly renderer: THREE.WebGPURenderer;
@@ -130,6 +134,25 @@ export class Post {
     this.streakKnob = this.knobs[0];
     this.build = (withDof, withStreaks, withBlur) =>
       chain(withDof ? dof(color, viewZ, this.focus, this.range, this.bokeh) : color, withStreaks, withBlur);
+    // the game's chain: the scene straight in (no volumes), one bloom carrying both glares, the same
+    // grade, flashes and vignette, no lens distortion (it costs a full-screen copy), antialiased
+    this.buildLite = () => {
+      const base = T.vec4(sceneColor.rgb, 1.0);
+      const bw = LOOK.bloomWide;
+      const bt = LOOK.bloomTight;
+      const c1 = T.add(base, bloom(highlights(base, bw.threshold), bw.strength + bt.strength * 0.7, (bw.radius + bt.radius) / 2, 0));
+      const c4 = T.mul(c1, T.exp2(exposure));
+      const c5c = T.mul(T.pow(T.div(T.max(c4, 0.0), 0.18), this.grade.contrast), 0.18);
+      const c6 = T.saturation(c5c, T.mul(saturation, this.grade.saturation));
+      const c7 = T.mix(c6, T.sub(1.0, c6), impact);
+      const flashCol = T.vec3(1.0, 0.95, 0.9);
+      const c8 = T.sub(1.0, T.mul(T.add(T.sub(1.0, flash), T.mul(flash, T.sub(1.0, flashCol))), T.sub(1.0, c7)));
+      const e = T.length(T.div(T.sub(T.screenUV, 0.5), T.vec2(0.625, 0.55)));
+      const mask = T.smoothstep(1.27, 0.73, e);
+      const c9 = T.mul(c8, T.add(T.mul(mask, vignette), T.sub(1.0, vignette)));
+      const c10 = T.vec4(fxaa(T.vec4(T.clamp(c9, 0.0, 1.0), 1.0))).rgb;
+      return T.vec4(c10, 1.0);
+    };
     this.pipeline = new THREE.RenderPipeline(renderer, this.output(false, false, false));
 
   }
@@ -156,7 +179,22 @@ export class Post {
       this.range.value = Math.max((s * s * d.fstop * LOOK.coc) / (f * f), 0.05);
       this.bokeh.value = THREE.MathUtils.clamp(2.8 / d.fstop, 0.5, 2.5);
     }
-    this.select(!!d, this.streakKnob.u.value > 0, this.unfoldBlur.value > 0.001);
+    if (!this.lite) this.select(!!d, this.streakKnob.u.value > 0, this.unfoldBlur.value > 0.001);
+  }
+
+  /** The game's lighter chain on (the valley) or the film's full one back (the menu, the stages). */
+  setLite(on: boolean) {
+    if (on === this.lite) return;
+    this.lite = on;
+    if (on) {
+      this.liteNode ??= this.buildLite();
+      this.pipeline.outputNode = this.liteNode;
+      this.variant = "lite";
+    } else {
+      this.variant = "";
+      this.select(false, false, false);
+    }
+    this.pipeline.needsUpdate = true;
   }
 
   private output(withDof: boolean, withStreaks: boolean, withBlur: boolean) {
@@ -182,8 +220,10 @@ export class Post {
     this.fitTargets();
     r.setRenderTarget(this.fs.sceneTarget);
     r.render(this.fs.scene, this.fs.camera);
-    r.setRenderTarget(this.fs.volumeTarget);
-    r.render(this.fs.volumes, this.fs.camera);
+    if (!this.lite) {
+      r.setRenderTarget(this.fs.volumeTarget);
+      r.render(this.fs.volumes, this.fs.camera);
+    }
     r.setRenderTarget(null);
     this.pipeline.render();
   }

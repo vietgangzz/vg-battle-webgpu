@@ -49,14 +49,16 @@ const HERO_NEAR: Record<string, number> = {
   bamboo_clump: 180,
   farmer_hut: 220,
 };
-const HERO_REFLECT = new Set(["pagoda_hall", "tam_quan_gate", "bell_tower", "village_house", "banyan_shrine", "boat_pier", "sampan", "village_gate", "bamboo_clump", "farmer_hut"]);
+const HERO_REFLECT = new Set(["pagoda_hall", "tam_quan_gate", "bell_tower", "village_house", "banyan_shrine", "boat_pier", "sampan", "village_gate"]);
 
 export class World {
   readonly group = new THREE.Group();
   readonly ground: Heightfield;
   private readonly chunks: { mesh: THREE.Mesh; center: THREE.Vector3; radius: number; near: number }[] = [];
-  /** lantern halos, drawn only near the camera (each is a draw call) */
+  /** lantern halos, drawn only near the camera and once the day turns (each is a draw call) */
   private readonly halos: THREE.Sprite[] = [];
+  /** 0 = morning .. 1 = dusk (set by the valley's day) */
+  evening = 0;
   /** one texture and one material per Meshy piece, however many cells use them (by blob offset) */
   private readonly heroMats = new Map<number, THREE.Material>();
   /** the dense grass and flowers round the camera (the scattered grass tufts are left out for it) */
@@ -153,7 +155,8 @@ export class World {
         geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(...c.center), c.radius);
         const mesh = new THREE.Mesh(geo, mat);
         mesh.name = `world:${inst.name}`;
-        if (NEAR[inst.name] !== undefined && inst.name !== "karstShrub") mesh.layers.set(NO_REFLECT);
+        // the river mirrors the karst towers and their greenery, not every tree and bush (a second pass over them all costs too much)
+        if (inst.name !== "karstShrub") mesh.layers.set(NO_REFLECT);
         this.group.add(mesh);
         this.chunks.push({ mesh, center: new THREE.Vector3(...c.center), radius: c.radius, near });
       }
@@ -201,7 +204,8 @@ export class World {
   /** Draw only the plant chunks near enough to the camera to be seen. */
   update(camera: THREE.Vector3) {
     this.meadow.update(camera);
-    for (const h of this.halos) h.visible = h.position.distanceToSquared(camera) < 75 * 75;
+    const lit = this.evening > 0.25;
+    for (const h of this.halos) h.visible = lit && h.position.distanceToSquared(camera) < 75 * 75;
     for (const c of this.chunks) c.mesh.visible = c.center.distanceTo(camera) - c.radius < c.near;
   }
 
