@@ -4,7 +4,7 @@ import * as Haptics from "expo-haptics";
 import { useKeepAwake } from "expo-keep-awake";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, type LayoutChangeEvent, PixelRatio, StyleSheet, Text, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { type SharedValue, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { Canvas, type CanvasRef } from "react-native-webgpu";
 
 import { Adventure, BAR_SLOTS, type HudState, type Pop, type SoundName } from "@/battle/game/adventure";
@@ -68,7 +68,32 @@ const HAPTIC: Partial<Record<SoundName, () => void>> = {
  */
 const gamePixelRatio = () => Math.min(PixelRatio.get(), 2);
 
-export function GameView({ autostart = false }: { autostart?: boolean }) {
+/**
+ * Write a meter only when it moved: every write is a trip to the UI thread
+ * (and reading one back can wait on it), so the last value sent is kept here.
+ */
+const sent = new WeakMap<SharedValue<number>, number>();
+function put(sv: SharedValue<number>, v: number) {
+  const last = sent.get(sv);
+  if (last !== undefined && Math.abs(last - v) < 1e-3) return;
+  sent.set(sv, v);
+  sv.value = v;
+}
+
+const lastLists = new WeakMap<SharedValue<number[]>, number[]>();
+function putList(sv: SharedValue<number[]>, v: ArrayLike<number>) {
+  const last = lastLists.get(sv);
+  if (last && last.length === v.length) {
+    let same = true;
+    for (let i = 0; i < v.length; i++) if (Math.abs(last[i] - v[i]) > 1e-3) { same = false; break; }
+    if (same) return;
+  }
+  const copy = Array.from(v);
+  lastLists.set(sv, copy);
+  sv.value = copy;
+}
+
+export function GameView({ autostart = false, brawl = false }: { autostart?: boolean; brawl?: boolean }) {
   useKeepAwake();
   const [fontsLoaded] = useFonts({ ManropeSemiBold: require("../../assets/fonts/Manrope-SemiBold.ttf") });
   const ref = useRef<CanvasRef>(null);
@@ -90,8 +115,7 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
   const [pad, setPad] = useState<Adventure | null>(null);
   const [roam, setRoam] = useState<{ game: Explore; manifest: WorldManifest } | null>(null);
   const [world, setWorld] = useState<ExploreHudState | null>(null);
-  const [fps, setFps] = useState(0);
-  const map = useSharedValue<number[]>([0, 0, 0, 0]);
+  const [fps, setFps] = useState("");
   const energy = useSharedValue(0);
   const skill = useSharedValue(0);
   const shot = useSharedValue(0);
@@ -116,7 +140,12 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
   // the frame rate actually delivered, twice a second, for the HUD's corner
   useEffect(() => {
     if (view !== "explore") return;
-    const id = setInterval(() => setFps(player.current?.stats.fps ?? 0), 500);
+    const id = setInterval(() => {
+      const st = player.current?.stats;
+      if (!st) return;
+      // frames delivered, then the JS thread's share: simulation + scene submit (ms)
+      setFps(`${st.fps} FPS · ${(explore.current?.stepMs ?? 0).toFixed(1)}+${st.drawMs.toFixed(1)}ms`);
+    }, 500);
     return () => clearInterval(id);
   }, [view]);
 
@@ -196,7 +225,9 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
     if (!autostart || autostarted.current || !roam || view !== "menu") return;
     autostarted.current = true;
     startExplore(true);
-  }, [autostart, roam, view, startExplore]);
+    // ?brawl=1: the fight benchmark
+    if (brawl) roam.game.brawl();
+  }, [autostart, brawl, roam, view, startExplore]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -230,13 +261,13 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
             if (settings.current.sfx) sfx.play(n);
             if (settings.current.haptics) HAPTIC[n]?.();
           },
-          pop: (pp) => setPops((list) => [...list.slice(-9), pp]),
+          pop: (pp) => setPops((list) => [...list.slice(-5), pp]),
           meters: (m) => {
-            energy.value = m.energy;
-            skill.value = m.skill;
-            combo.value = m.combo;
-            progress.value = m.progress;
-            bars.value = [...m.bars];
+            put(energy, m.energy);
+            put(skill, m.skill);
+            put(combo, m.combo);
+            put(progress, m.progress);
+            putList(bars, m.bars);
           },
           finisher: (at) => {
             soundtrack.seekTo(at);
@@ -261,18 +292,18 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
             if (settings.current.sfx) sfx.play(n);
             if (settings.current.haptics) HAPTIC[n]?.();
           },
-          pop: (pp) => setPops((list) => [...list.slice(-9), pp]),
+          pop: (pp) => setPops((list) => [...list.slice(-5), pp]),
+          // each write crosses to the UI thread: only what changed goes
           meters: (m) => {
-            energy.value = m.energy;
-            skill.value = m.skill;
-            shot.value = m.shot;
-            stamina.value = m.stamina;
-            winded.value = m.winded;
-            combo.value = m.combo;
-            bars.value = [...m.bars];
-            levels.value = [...m.levels];
-            waypoint.value = [...m.waypoint];
-            map.value = [...m.map];
+            put(energy, m.energy);
+            put(skill, m.skill);
+            put(shot, m.shot);
+            put(stamina, m.stamina);
+            put(winded, m.winded);
+            put(combo, m.combo);
+            putList(bars, m.bars);
+            putList(levels, m.levels);
+            putList(waypoint, m.waypoint);
           },
           progress: (level, xp, levelled) => {
             setHero(level, xp);
@@ -329,6 +360,11 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
   }, [hud.phase, hud.results, record, soundtrack]);
 
   const popDone = useCallback((id: number) => setPops((list) => list.filter((p) => p.id !== id)), []);
+  // stable, so the memoised controls don't re-render for it
+  const buttonTap = useCallback(() => {
+    if (settings.current.haptics) void Haptics.selectionAsync();
+  }, []);
+  const pause = useCallback(() => setPaused(true), []);
 
   // ---- dev: fold / unfold the simulator (it has one display) and reach the game from the debugger
   useEffect(() => {
@@ -369,7 +405,7 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
               ultReady={hud.ultReady}
               finishable={hud.finishable}
               size={save.settings.buttons}
-              onPress={() => save.settings.haptics && void Haptics.selectionAsync()}
+              onPress={buttonTap}
             />
           )}
           {hud.phase === "results" && hud.results && (
@@ -398,7 +434,7 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
               ultReady={world.ultReady}
               finishable={false}
               size={save.settings.buttons}
-              onPress={() => save.settings.haptics && void Haptics.selectionAsync()}
+              onPress={buttonTap}
             />
           )}
           {/* over the controls: its own buttons (pause, the quest tab) take touches, the rest lets them through */}
@@ -410,7 +446,7 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
             levels={levels}
             pops={pops}
             onPopDone={popDone}
-            onPause={() => setPaused(true)}
+            onPause={pause}
             fps={fps}
             waypoint={waypoint}
           />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
@@ -43,7 +43,7 @@ export function ExploreHud({
   onPopDone: (id: number) => void;
   onPause: () => void;
   /** frames per second actually delivered (shown small by the pause button) */
-  fps?: number;
+  fps?: string;
   /** where the current objective is (see ExploreMeters.waypoint) */
   waypoint: SharedValue<number[]>;
 }) {
@@ -78,10 +78,10 @@ export function ExploreHud({
           />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
           {/* the boss's bar takes the top of the screen; the tracker steps aside for the fight */}
-          {!state.boss && <Quests state={state} top={top + 108} left={left} />}
+          {!state.boss && <Quests o={state.objectives} top={top + 108} left={left} />}
           <Combo count={state.combo} timer={combo} />
           {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 190} />}
-          {!!fps && <Text style={[styles.fps, { top: top + 12, right: right + 50 }]}>{fps} FPS</Text>}
+          {!!fps && <Text style={[styles.fps, { top: top + 12, right: right + 50 }]}>{fps}</Text>}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right }]}>
             <PauseIcon />
           </Pressable>
@@ -93,9 +93,9 @@ export function ExploreHud({
 }
 
 /** The quest tracker: what is left in the valley, under SORA's portrait. The tab folds it away. */
-function Quests({ state, top, left }: { state: HudState; top: number; left: number }) {
+const Quests = memo(
+  function Quests({ o, top, left }: { o: HudState["objectives"]; top: number; left: number }) {
   const [open, setOpen] = useState(true);
-  const o = state.objectives;
   const rows: [string, string, boolean][] = [
     ["Light the shrines", `${o.shrines[0]}/${o.shrines[1]}`, o.shrines[0] === o.shrines[1]],
     ["Clear shadow camps", `${o.camps[0]}/${o.camps[1]}`, o.camps[0] === o.camps[1]],
@@ -123,7 +123,16 @@ function Quests({ state, top, left }: { state: HudState; top: number; left: numb
         ))}
     </View>
   );
-}
+  },
+  // redrawn only when a count moves, not for every hit and point of health
+  (a, b) =>
+    a.top === b.top &&
+    a.left === b.left &&
+    a.o.boss === b.o.boss &&
+    a.o.shrines[0] === b.o.shrines[0] &&
+    a.o.camps[0] === b.o.camps[0] &&
+    a.o.spirits[0] === b.o.spirits[0],
+);
 
 const AText = Animated.createAnimatedComponent(TextInput);
 const WAY_KIND = ["SHRINE", "CAMP", "GENERAL"];
@@ -133,7 +142,7 @@ const WAY_KIND = ["SHRINE", "CAMP", "GENERAL"];
  * is, or, when it is off screen, pinned to the edge with an arrow pointing
  * the way. Gently bobbing.
  */
-function Waypoint({ way }: { way: SharedValue<number[]> }) {
+const Waypoint = memo(function Waypoint({ way }: { way: SharedValue<number[]> }) {
   const bob = useSharedValue(0);
   useEffect(() => {
     bob.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }), -1, true);
@@ -168,16 +177,16 @@ function Waypoint({ way }: { way: SharedValue<number[]> }) {
       <AText editable={false} underlineColorAndroid="transparent" style={styles.wayDist} animatedProps={dist} defaultValue="" />
     </Animated.View>
   );
-}
+});
 
-function Toast({ text, top }: { text: string; top: number }) {
+const Toast = memo(function Toast({ text, top }: { text: string; top: number }) {
   return (
     <Animated.View key={text} entering={FadeInDown.duration(320)} exiting={FadeOut.duration(250)} style={[styles.toast, { top, pointerEvents: "none" }]}>
       <View style={styles.toastDot} />
       <Text style={styles.toastText}>{text}</Text>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   pause: {

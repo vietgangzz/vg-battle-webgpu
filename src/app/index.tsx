@@ -8,7 +8,7 @@ const GameView = React.lazy(() => import("@/components/game-view").then((m) => (
 
 export default function Game() {
   // `?explore=1` opens straight into the valley (for testing builds where nothing can be tapped)
-  const { explore } = useLocalSearchParams<{ explore?: string }>();
+  const { explore, brawl } = useLocalSearchParams<{ explore?: string; brawl?: string }>();
   // the game is played lying down, whichever way the phone is turned; the film route keeps its own
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
@@ -24,7 +24,7 @@ export default function Game() {
         </View>
       }
     >
-      <GameView autostart={explore === "1"} />
+      <GameView autostart={explore === "1"} brawl={brawl === "1"} />
     </Suspense>
   );
 }

@@ -493,9 +493,14 @@ export class Explore {
     // as many 60 Hz steps as frames have passed since the last one shown (one, at a steady 60)
     const n = this.player.pace(now);
     if (n === 0) return false;
+    const t0 = performance.now();
     for (let i = 0; i < n; i++) this.step();
+    this.stepMs = this.stepMs * 0.9 + (performance.now() - t0) * 0.1;
     return this.player.renderPosed(() => this.pose(), now);
   }
+
+  /** CPU time spent stepping the simulation per frame (smoothed), in ms */
+  stepMs = 0;
 
   private get time() {
     return this.combat.time;
@@ -529,6 +534,7 @@ export class Explore {
     this.boss.target = hero;
     if (dt > 0) {
       this.updatePacks(dt);
+      this.autoBrawl(dt);
       for (const f of this.foes) {
         if (!f.active || f.actor.dead) continue;
         this.combat.obey(f.actor, f.brain.update(dt, this.time, f.actor, hero, this.tokens), hero);
@@ -1155,6 +1161,44 @@ export class Explore {
         p.state = "asleep";
       }
     });
+  }
+
+  // ---------------------------------------------------------------- benchmark
+  private brawling = false;
+  private brawlNext = 0;
+  private brawlT = 0;
+
+  /**
+   * A repeatable fight for measuring frame rate (opened with ?brawl=1): pack
+   * after pack is set down a few strides ahead of SORA, already hunting her,
+   * and she fights them on her own: blades up close, kiếm khí from afar, the
+   * ultimate whenever it is ready.
+   */
+  brawl(on = true) {
+    this.brawling = on;
+  }
+
+  private autoBrawl(dt: number) {
+    if (!this.brawling || this.phase !== "roam") return;
+    const hero = this.hero;
+    if (!this.packs.some((p) => p.state === "out")) {
+      const i = this.brawlNext++ % this.packs.length;
+      const p = this.packs[i];
+      p.x = hero.pos.x + Math.cos(hero.yaw) * 9;
+      p.y = hero.pos.y + Math.sin(hero.yaw) * 9;
+      this.spawnPack(i);
+      for (const m of this.monsters) if (m.pack === i) m.aggro = true;
+    }
+    this.brawlT -= dt;
+    if (this.brawlT > 0 || hero.hp <= 0) return;
+    // she never falls in a benchmark
+    hero.hp = Math.max(hero.hp, hero.maxHp * 0.5);
+    let near = Infinity;
+    for (const m of this.monsters) if (m.alive) near = Math.min(near, m.pos.distanceTo(hero.pos));
+    if (this.combat.energy >= ENERGY_MAX) this.ult();
+    else if (near < 3.4) this.attack();
+    else if (near < 30) this.shoot();
+    this.brawlT = near < 3.4 ? 0.28 : 0.7;
   }
 
   private spawnPack(i: number) {

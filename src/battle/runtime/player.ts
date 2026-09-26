@@ -53,6 +53,8 @@ export class FilmPlayer {
   private lastRender = 0;
   private settle = 0;
   private lastFrame = 0;
+  /** CPU time spent posing and submitting a game frame (smoothed), in ms */
+  private drawMs = 0;
 
   private constructor(
     private readonly context: GPUCanvasContext & { present: () => void },
@@ -112,7 +114,7 @@ export class FilmPlayer {
 
   /** frame rate actually delivered and the scene resolution scale it settled on */
   get stats() {
-    return { fps: this.avgInterval ? Math.round(1000 / this.avgInterval) : 0, scale: this.scale };
+    return { fps: this.avgInterval ? Math.round(1000 / this.avgInterval) : 0, scale: this.scale, drawMs: this.drawMs };
   }
 
   /** Resize to a new layout (fold/unfold, rotation). Sizes in points. */
@@ -180,9 +182,11 @@ export class FilmPlayer {
     if (this.lastRender && since < this.budget * 0.9) return false;
     this.adapt(since);
     this.lastRender = now;
+    const t0 = performance.now();
     pose();
     this.post.render();
     this.context.present();
+    this.drawMs = this.drawMs * 0.9 + (performance.now() - t0) * 0.1;
     return true;
   }
 
@@ -209,7 +213,8 @@ export class FilmPlayer {
   pace(now: number) {
     if (this.lastRender && now - this.lastRender < this.budget * 0.9) return 0;
     const since = this.lastRender ? now - this.lastRender : this.budget;
-    return Math.min(4, Math.max(1, Math.round(since / this.budget)));
+    // at most two: when frames run late, more steps per frame would only make them later still
+    return Math.min(2, Math.max(1, Math.round(since / this.budget)));
   }
 
   /** Hold the scene passes at full resolution (the game: its cost is the CPU's, and a softer picture would not buy frames back). */

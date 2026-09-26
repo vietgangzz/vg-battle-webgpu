@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, {
   Easing,
@@ -79,7 +79,7 @@ export function Hud({
 }
 
 // ---------------------------------------------------------------- over the shadows' heads
-export function Markers({ bars, levels }: { bars: SharedValue<number[]>; levels?: SharedValue<number[]> }) {
+export const Markers = memo(function Markers({ bars, levels }: { bars: SharedValue<number[]>; levels?: SharedValue<number[]> }) {
   return (
     <View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}>
       {Array.from({ length: BAR_SLOTS }, (_, i) => (
@@ -87,11 +87,11 @@ export function Markers({ bars, levels }: { bars: SharedValue<number[]>; levels?
       ))}
     </View>
   );
-}
+});
 
 const ALevel = Animated.createAnimatedComponent(TextInput);
 
-function Marker({ slot, bars, levels }: { slot: number; bars: SharedValue<number[]>; levels?: SharedValue<number[]> }) {
+const Marker = memo(function Marker({ slot, bars, levels }: { slot: number; bars: SharedValue<number[]>; levels?: SharedValue<number[]> }) {
   const box = useAnimatedStyle(() => {
     const k = slot * 4;
     const b = bars.value;
@@ -105,9 +105,9 @@ function Marker({ slot, bars, levels }: { slot: number; bars: SharedValue<number
       {levels && <ALevel editable={false} underlineColorAndroid="transparent" style={styles.markerLevel} animatedProps={level} defaultValue="" />}
     </Animated.View>
   );
-}
+});
 
-export function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => void }) {
+export const DamagePop = memo(function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => void }) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = withTiming(1, { duration: pop.kind === "crit" ? 900 : 700, easing: Easing.out(Easing.cubic) });
@@ -128,10 +128,10 @@ export function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => v
       {text}
     </Animated.Text>
   );
-}
+});
 
 /** Red creeping in from the edges while SORA is near the end. */
-export function LowHealth({ low }: { low: boolean }) {
+export const LowHealth = memo(function LowHealth({ low }: { low: boolean }) {
   const p = useSharedValue(0);
   useEffect(() => {
     p.value = low ? withRepeat(withSequence(withTiming(1, { duration: 520 }), withTiming(0.35, { duration: 520 })), -1) : withTiming(0, { duration: 300 });
@@ -150,10 +150,10 @@ export function LowHealth({ low }: { low: boolean }) {
       </Svg>
     </Animated.View>
   );
-}
+});
 
 /** The road ahead: the ambushes and the boss gate along it, SORA's dot moving on. */
-function Progress({ value, marks, top }: { value: SharedValue<number>; marks: number[]; top: number }) {
+const Progress = memo(function Progress({ value, marks, top }: { value: SharedValue<number>; marks: number[]; top: number }) {
   const dot = useAnimatedStyle(() => ({ left: `${value.value * 100}%` }));
   const fill = useAnimatedStyle(() => ({ width: `${value.value * 100}%` }));
   return (
@@ -167,19 +167,19 @@ function Progress({ value, marks, top }: { value: SharedValue<number>; marks: nu
       </View>
     </View>
   );
-}
+});
 
-function Hint({ text, bottom }: { text: string; bottom: number }) {
+const Hint = memo(function Hint({ text, bottom }: { text: string; bottom: number }) {
   return (
     <Animated.View key={text} entering={FadeInDown.duration(320)} exiting={FadeOut.duration(250)} style={[styles.hint, { bottom, pointerEvents: "none" }]}>
       <View style={styles.hintDot} />
       <Text style={styles.hintText}>{text}</Text>
     </Animated.View>
   );
-}
+});
 
 // ---------------------------------------------------------------- SORA
-export function PlayerPanel({
+export const PlayerPanel = memo(function PlayerPanel({
   hp,
   max,
   energy,
@@ -279,10 +279,10 @@ export function PlayerPanel({
       </View>
     </Animated.View>
   );
-}
+});
 
 /** A health bar cut on the slant, with the lost chunk lingering in ivory before it drains. */
-function SlantBar({ frac, color, width, height, flip }: { frac: number; color: string; width: number; height: number; flip?: boolean }) {
+const SlantBar = memo(function SlantBar({ frac, color, width, height, flip }: { frac: number; color: string; width: number; height: number; flip?: boolean }) {
   const f = useSharedValue(frac);
   const lag = useSharedValue(frac);
   useEffect(() => {
@@ -309,10 +309,10 @@ function SlantBar({ frac, color, width, height, flip }: { frac: number; color: s
       ))}
     </View>
   );
-}
+});
 
 // ---------------------------------------------------------------- KAGE
-export function BossBar({ hp, max, name, title, top }: { hp: number; max: number; name: string; title: string; top: number }) {
+export const BossBar = memo(function BossBar({ hp, max, name, title, top }: { hp: number; max: number; name: string; title: string; top: number }) {
   const enter = useSharedValue(0);
   useEffect(() => {
     enter.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
@@ -332,19 +332,19 @@ export function BossBar({ hp, max, name, title, top }: { hp: number; max: number
       </View>
     </Animated.View>
   );
-}
+});
 
-function WavePill({ text, top }: { text: string; top: number }) {
+const WavePill = memo(function WavePill({ text, top }: { text: string; top: number }) {
   return (
     <View style={[styles.wave, { top: top + 44, pointerEvents: "none" }]}>
       <View style={styles.waveDot} />
       <Text style={styles.waveText}>{text}</Text>
     </View>
   );
-}
+});
 
 // ---------------------------------------------------------------- combo
-export function Combo({ count, timer }: { count: number; timer: SharedValue<number> }) {
+export const Combo = memo(function Combo({ count, timer }: { count: number; timer: SharedValue<number> }) {
   const pop = useSharedValue(0);
   useEffect(() => {
     if (count >= 2) {
@@ -366,10 +366,10 @@ export function Combo({ count, timer }: { count: number; timer: SharedValue<numb
       {count >= 10 && <Text style={[styles.comboPraise, { color: hot }]}>{count >= 30 ? "UNSTOPPABLE" : count >= 20 ? "SAVAGE" : "GREAT"}</Text>}
     </View>
   );
-}
+});
 
 // ---------------------------------------------------------------- words
-export function Banner({ text, sub }: { text: string; sub: string }) {
+export const Banner = memo(function Banner({ text, sub }: { text: string; sub: string }) {
   const slide = useSharedValue(0);
   const underline = useSharedValue(0);
   const shown = useRef("");
@@ -402,9 +402,9 @@ export function Banner({ text, sub }: { text: string; sub: string }) {
       </Animated.View>
     </View>
   );
-}
+});
 
-function GoArrow() {
+const GoArrow = memo(function GoArrow() {
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = withRepeat(withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }), -1, true);
@@ -419,7 +419,7 @@ function GoArrow() {
       </View>
     </Animated.View>
   );
-}
+});
 
 /** The slash under a title card, drawn in two strokes. */
 export function Slash({ width = 220, color = LIME }: { width?: number; color?: string }) {

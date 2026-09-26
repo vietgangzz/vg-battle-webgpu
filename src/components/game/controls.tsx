@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type GestureResponderEvent, type LayoutChangeEvent, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -89,7 +89,11 @@ const WAKE_MS = 2200;
  * nothing drifts when the stick moves. Left alone, everything fades back so
  * the valley shows through.
  */
-export function Controls({
+/**
+ * Memoised: it re-renders only when its own inputs change (the ultimate
+ * becoming ready, the finisher), never for the HUD's every hit and number.
+ */
+export const Controls = memo(function Controls({
   pad,
   energy,
   skill,
@@ -311,7 +315,7 @@ export function Controls({
       </Animated.View>
     </View>
   );
-}
+});
 
 // ---------------------------------------------------------------- the stick
 /**
@@ -392,7 +396,7 @@ const DEEP = "#0A0F16";
  * gold charge ring (then a burst of light when ready), the sprint's stamina.
  * Pressed, it sinks and flares; ready specials wear slowly turning arcs.
  */
-function ActionButton({
+const ActionButton = memo(function ActionButton({
   b,
   down,
   energy,
@@ -617,7 +621,7 @@ function ActionButton({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   knob: { position: "absolute", width: KNOB_R * 2, height: KNOB_R * 2 },
