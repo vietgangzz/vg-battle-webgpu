@@ -174,8 +174,7 @@ export const TEMPEST: MoveDef = {
   name: "tempest",
   keys: tempestKeys(),
   impact: 0.5,
-  swing: "spin",
-  also: ["leap"],
+  // (no film swing or leap clips: they are SORA's lime; the tempest's light is all pink, see LotusBloom)
   hits: [
     { range: 5.5, arc: 180, damage: 26, kind: "launch", clip: "spinHit", gain: 0 },
     // the landing: 0.62 s after the first ring

@@ -24,6 +24,8 @@ const MAX = 28;
 const BURSTS = 10;
 
 const LIME: [number, number, number] = [0.72, 1, 0.22];
+/** the lotus tempest's light */
+export const LOTUS_PINK: [number, number, number] = [1, 0.36, 0.74];
 
 /** A flat crescent in its own XY plane, bulging toward +y (the way it flies). */
 function crescent(radius: number, width: number, span: number) {
@@ -55,16 +57,17 @@ function crescent(radius: number, width: number, span: number) {
 function softMaterial(color: [number, number, number], strength: number, ring = false) {
   const m = new THREE.SpriteNodeMaterial();
   const fade = TSL.uniform(1);
+  const tint = TSL.uniform(new THREE.Color(...color)).setGroup(TSL.renderGroup);
   const r = TSL.uv().sub(0.5).length().mul(2);
   const shape = ring
     ? TSL.smoothstep(0.55, 0.82, r).mul(TSL.smoothstep(1.0, 0.84, r))
     : TSL.float(1).sub(r).clamp(0, 1).pow(2.2);
-  m.colorNode = TSL.vec4(TSL.vec3(...color).mul(strength), shape.mul(fade));
+  m.colorNode = TSL.vec4(tint.mul(strength), shape.mul(fade));
   m.transparent = true;
   m.depthWrite = false;
   m.blending = THREE.AdditiveBlending;
   m.fog = false;
-  return { m, fade };
+  return { m, fade, tint };
 }
 
 interface Bolt {
@@ -86,15 +89,16 @@ interface Bolt {
 function beamMaterial() {
   const m = new THREE.SpriteNodeMaterial();
   const fade = TSL.uniform(0);
+  const tint = TSL.uniform(new THREE.Color(...LIME)).setGroup(TSL.renderGroup);
   const uv = TSL.uv();
   const side = TSL.float(1).sub(uv.x.sub(0.5).abs().mul(2)).clamp(0, 1).pow(2.5);
   const up = TSL.smoothstep(0.0, 0.12, uv.y).mul(TSL.float(1).sub(uv.y).pow(1.4));
-  m.colorNode = TSL.vec4(TSL.vec3(...LIME).mul(3.2), side.mul(up).mul(fade));
+  m.colorNode = TSL.vec4(tint.mul(3.2), side.mul(up).mul(fade));
   m.transparent = true;
   m.depthWrite = false;
   m.blending = THREE.AdditiveBlending;
   m.fog = false;
-  return { m, fade };
+  return { m, fade, tint };
 }
 
 interface Burst {
@@ -103,6 +107,7 @@ interface Burst {
   flash: THREE.Sprite;
   fade: ReturnType<typeof TSL.uniform>;
   flashFade: ReturnType<typeof TSL.uniform>;
+  tint: ReturnType<typeof TSL.uniform>;
 }
 
 const V = new THREE.Vector3();
@@ -114,7 +119,9 @@ export class Bolts {
   readonly group = new THREE.Group();
   private readonly bolts: Bolt[] = [];
   private readonly bursts: Burst[] = [];
-  private readonly beam: { sprite: THREE.Sprite; fade: ReturnType<typeof TSL.uniform>; t: number };
+  private readonly beam: { sprite: THREE.Sprite; fade: ReturnType<typeof TSL.uniform>; tint: ReturnType<typeof TSL.uniform>; t: number };
+  /** the thrown kiếm khí's look, and the tempest's pink one */
+  private readonly looks: { core: THREE.Material; halo: THREE.Material }[] = [];
 
   constructor(
     private readonly ground: (x: number, y: number) => number,
@@ -133,6 +140,9 @@ export class Bolts {
       return m;
     });
     const halo = softMaterial(LIME, 2.2).m;
+    const pinkCore = glow(LOTUS_PINK, 6, false);
+    pinkCore.side = THREE.DoubleSide;
+    this.looks.push({ core, halo }, { core: pinkCore, halo: softMaterial(LOTUS_PINK, 2.4).m });
     for (let i = 0; i < MAX; i++) {
       const body = new THREE.Mesh(geo, core);
       const h = new THREE.Sprite(halo);
@@ -154,7 +164,7 @@ export class Bolts {
     beam.center.set(0.5, 0);
     beam.visible = false;
     this.group.add(beam);
-    this.beam = { sprite: beam, fade: bm.fade, t: 1 };
+    this.beam = { sprite: beam, fade: bm.fade, tint: bm.tint, t: 1 };
     for (let i = 0; i < BURSTS; i++) {
       const ring = softMaterial(LIME, 3.2, true);
       const flash = softMaterial([1, 1, 0.85], 3.5);
@@ -162,7 +172,7 @@ export class Bolts {
       const fl = new THREE.Sprite(flash.m);
       sprite.visible = fl.visible = false;
       this.group.add(sprite, fl);
-      this.bursts.push({ t: 1, sprite, flash: fl, fade: ring.fade, flashFade: flash.fade });
+      this.bursts.push({ t: 1, sprite, flash: fl, fade: ring.fade, flashFade: flash.fade, tint: ring.tint });
     }
   }
 
@@ -172,6 +182,9 @@ export class Bolts {
     b.live = true;
     b.t = 0;
     b.heavy = heavy;
+    const look = this.looks[heavy ? 1 : 0];
+    b.body.material = look.core;
+    b.halo.material = look.halo as THREE.SpriteMaterial;
     b.body.scale.setScalar(heavy ? 1.45 : 1);
     b.halo.scale.setScalar(heavy ? 3.0 : 2.6);
     b.pos.set(from.x, from.y, this.ground(from.x, from.y) + HEIGHT).addScaledVector(V.copy(dir).setZ(0).normalize(), 0.9);
@@ -216,7 +229,7 @@ export class Bolts {
         if (Math.abs(f.pos.z + 0.9 * f.scale - b.pos.z) > 1.7 * Math.max(1, f.scale)) continue;
         b.struck.add(f);
         hit(f, V.set(f.pos.x, f.pos.y, b.pos.z), b.heavy);
-        this.burst(b.pos, 1.6);
+        this.burst(b.pos, 1.6, b.heavy);
         if (b.struck.size >= (b.heavy ? 5 : PIERCE)) {
           this.spend(b);
           break;
@@ -224,7 +237,7 @@ export class Bolts {
       }
       if (!b.live) continue;
       if (b.t > LIFE || this.solid(b.pos)) {
-        this.burst(b.pos, 2.2);
+        this.burst(b.pos, 2.2, b.heavy);
         this.spend(b);
         continue;
       }
@@ -251,14 +264,15 @@ export class Bolts {
   }
 
   /** The level-up: a pillar of light and rings of it spreading from the feet. */
-  flare(at: THREE.Vector3, ground: number) {
+  flare(at: THREE.Vector3, ground: number, pink = false) {
     const b = this.beam;
     b.t = 0;
+    (b.tint.value as THREE.Color).setRGB(...(pink ? LOTUS_PINK : LIME));
     b.sprite.position.set(at.x, at.y, ground);
     b.sprite.visible = true;
     const feet = V.set(at.x, at.y, ground + 0.3);
-    this.burst(feet, 7);
-    this.burst(feet.setZ(ground + 1.2), 4);
+    this.burst(feet, 7, pink);
+    this.burst(feet.setZ(ground + 1.2), 4, pink);
   }
 
   clear() {
@@ -271,9 +285,15 @@ export class Bolts {
     }
   }
 
-  private burst(at: THREE.Vector3, size: number) {
+  /** A ring of light spreading from `at` (the tempest's pink ones as she springs and lands). */
+  ring(at: THREE.Vector3, size: number, pink = false) {
+    this.burst(at, size, pink);
+  }
+
+  private burst(at: THREE.Vector3, size: number, pink = false) {
     const u = this.bursts.find((x) => x.t >= 1) ?? this.bursts[0];
     u.t = 0;
+    (u.tint.value as THREE.Color).setRGB(...(pink ? LOTUS_PINK : LIME));
     u.sprite.userData.size = size / 2;
     u.sprite.position.copy(at);
     u.flash.position.copy(at);

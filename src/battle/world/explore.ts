@@ -31,6 +31,7 @@ import { Monster, type MonsterKind, PACKS, WaterOrbs } from "./monsters";
 import type { WorldData } from "./data";
 import { DUSK, MORNING, mixLook } from "./look";
 import { Guide, type GroundQuery } from "./guide";
+import { LotusBloom } from "./lotus";
 import { FOCUS, LAMP, SHADOWS } from "./shaders";
 import { OrbitCamera } from "./orbit";
 import { boosts, cleanRanks, NO_RANKS, pointsEarned, type Ranks } from "./skills";
@@ -185,6 +186,8 @@ export class Explore {
   private readonly waterOrbs = new WaterOrbs();
   /** the way to the next objective, drawn in the valley */
   private readonly guide = new Guide(NO_REFLECT);
+  /** the lotus the tempest opens where she lands */
+  private readonly lotus = new LotusBloom();
   private readonly groundQuery: GroundQuery = {
     height: (x, y) => this.world.ground.at(x, y),
     // the river (the paddies' shallow water is walked through)
@@ -266,7 +269,7 @@ export class Explore {
     this.cloud = fs.drive("world.cloud_w", false);
     this.orbs = new Orbs(this.mats);
     this.ring = new TargetRing(this.mats);
-    this.world.group.add(this.orbs.group, this.ring.mesh, this.bolts.group, this.waterOrbs.group, this.guide.group);
+    this.world.group.add(this.orbs.group, this.ring.mesh, this.bolts.group, this.waterOrbs.group, this.guide.group, this.lotus.group);
     // the wild monsters (when their models are loaded)
     if (creatures) {
       let seed = 5;
@@ -489,6 +492,7 @@ export class Explore {
     this.world.group.visible = false;
     this.quietParticles(false);
     this.guide.hide();
+    this.lotus.hide();
     // the film and the stages are graded as filmed, through the full chain
     this.player.post.setLite(false);
     this.player.post.grade.saturation.value = 1;
@@ -582,6 +586,7 @@ export class Explore {
     for (const f of this.foes) if (f.active) this.combat.resolve(f.actor);
     this.separate();
 
+    this.lotus.update(DT);
     this.bolts.update(dt, this.targets(), (foe, _at, heavy) => {
       (foe as unknown as Monster).aggro = true;
       this.combat.blast(this.hero, foe, heavy ? TEMPEST_BOLT : BOLT_HIT);
@@ -1146,12 +1151,16 @@ export class Explore {
       this.camera.shake(0.25);
     };
     const yaw = Math.atan2(me.forward.y, me.forward.x);
+    // the spring: pink rings off the ground under her
+    this.bolts.ring(V.set(me.pos.x, me.pos.y, me.groundZ + 0.2), 5, true);
+    this.bolts.ring(V.set(me.pos.x, me.pos.y, me.pos.z + 0.8), 3, true);
     ring(yaw);
     this.after(0.3, () => ring(yaw + Math.PI / 10));
     this.after(0.62, () => {
       const at = V.set(me.pos.x, me.pos.y, me.groundZ);
-      this.fx.fire("slam", this.time, at, me.yaw, 0);
-      this.bolts.flare(at, me.groundZ);
+      this.bolts.flare(at, me.groundZ, true);
+      this.bolts.ring(V.set(at.x, at.y, me.groundZ + 0.15), 11, true);
+      this.lotus.bloom(at, me.groundZ);
       this.combat.hitStop(5, 0.45);
       this.events.sound?.("slam");
       this.events.sound?.("clash");
@@ -1210,6 +1219,8 @@ export class Explore {
     await show(this.waterOrbs.group);
     await show(this.guide.group);
     this.guide.hide();
+    await show(this.lotus.group);
+    this.lotus.hide();
     group.visible = was;
   }
 
