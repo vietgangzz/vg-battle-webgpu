@@ -242,8 +242,12 @@ const FLOWERS = [d.vec3f(0.95, 0.95, 0.9), d.vec3f(0.58, 0.42, 0.95), d.vec3f(1.
 const BLOSSOM = d.vec3f(0.98, 0.55, 0.72);
 const BLOSSOM2 = d.vec3f(0.7, 0.5, 0.95);
 
-/** One material per plant look: placed per instance, blown, toon-lit, backlit leaves glow. */
-export function plantMaterial(look: PlantLook) {
+/**
+ * One material per plant look: placed per instance, blown, toon-lit, backlit
+ * leaves glow. `near` (m): past it a plant shrinks away into its root (the GPU
+ * culls by distance, so a whole kind is one draw however far it spreads).
+ */
+export function plantMaterial(look: PlantLook, near = 1e5) {
   const p = PLANTS[look];
   const lit1 = d.vec3f(...p.lit);
   const lit2 = d.vec3f(...p.lit2);
@@ -267,7 +271,8 @@ export function plantMaterial(look: PlantLook) {
     "use gpu";
     const root = pos.$;
     const yaw = rs.$.x;
-    const s = rs.$.y;
+    const far = std.length(std.sub(t3.cameraPosition.$, root));
+    const s = rs.$.y * (1 - std.smoothstep(near * 0.85, near, far));
     const local = rotZ(std.mul(t3.positionGeometry.$, s), yaw);
     return std.add(std.add(root, local), gust(root, sway.$, s, d.f32(windAmt)));
   };
@@ -360,8 +365,23 @@ export function propMaterial() {
  * A painted model: its texture is the colour; the light still bands it like
  * everything else in the valley, only softer, so the painting keeps its detail.
  */
-export function heroMaterial(tex: THREE.Texture) {
+/**
+ * A Meshy piece: its painted texture under the valley's light. Instanced
+ * (`near` given, with an `i_center` per instance), a copy past `near` shrinks
+ * into its centre, so one draw holds every copy of a kind.
+ */
+export function heroMaterial(tex: THREE.Texture, near?: number) {
   const albedo = t3.fromTSL(TSL.texture(tex, TSL.uv()), d.vec4f);
+  const center = near === undefined ? null : t3.attribute("i_center", d.vec3f);
+  const shrink =
+    center && near !== undefined
+      ? () => {
+          "use gpu";
+          const c = center.$;
+          const far = std.length(std.sub(t3.cameraPosition.$, c));
+          return std.mix(c, t3.positionLocal.$, 1 - std.smoothstep(near * 0.85, near, far));
+        }
+      : undefined;
   return material(() => {
     "use gpu";
     const pw = t3.positionWorld.$;
@@ -391,7 +411,7 @@ export function heroMaterial(tex: THREE.Texture) {
     let c = std.add(std.mix(shade, lit, k), std.mul(std.mul(e, base), 0.08));
     c = std.add(c, std.mul(U.skyHorizon.$, std.smoothstep(0.7, 0.95, facing(n, v)) * 0.08));
     return d.vec4f(fog(c, pw), 1);
-  });
+  }, { position: shrink });
 }
 
 // ---------------------------------------------------------------- lamps

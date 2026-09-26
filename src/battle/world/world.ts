@@ -129,36 +129,42 @@ export class World {
       this.halos.push(sp);
     }
 
-    const mats = new Map<PlantLook, THREE.Material>();
+    const mats = new Map<string, THREE.Material>();
     this.meadow = new Meadow(data, this.ground, m.colliders, NO_REFLECT);
     this.group.add(this.meadow.group);
 
     for (const inst of m.instances) {
       if (inst.name === "grass") continue;
       const look = LOOK[inst.name] ?? "shrub";
-      let mat = mats.get(look);
+      const near = NEAR[inst.name] ?? 240;
+      // one draw per kind across the whole valley: the GPU drops what is far (plantMaterial's `near`);
+      // chunked, the JS thread paid for every chunk's draw, eighty of them
+      const key = `${look}@${near}`;
+      let mat = mats.get(key);
       if (!mat) {
-        mat = plantMaterial(look);
-        mats.set(look, mat);
+        mat = plantMaterial(look, near);
+        mats.set(key, mat);
       }
       const base = geos[inst.mesh];
-      const near = NEAR[inst.name] ?? 240;
+      const rows = new Float32Array(inst.chunks.reduce((n, c) => n + c.n, 0) * 5);
+      let at = 0;
       for (const c of inst.chunks) {
-        const geo = new THREE.InstancedBufferGeometry();
-        geo.index = base.index;
-        for (const [name, a] of Object.entries(base.attributes)) geo.setAttribute(name, a);
-        const buf = new THREE.InstancedInterleavedBuffer(data.f32(c.o, c.n * 5), 5, 1);
-        geo.setAttribute("i_pos", new THREE.InterleavedBufferAttribute(buf, 3, 0));
-        geo.setAttribute("i_rs", new THREE.InterleavedBufferAttribute(buf, 2, 3));
-        geo.instanceCount = c.n;
-        geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(...c.center), c.radius);
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.name = `world:${inst.name}`;
-        // the river mirrors the karst towers and their greenery, not every tree and bush (a second pass over them all costs too much)
-        if (inst.name !== "karstShrub") mesh.layers.set(NO_REFLECT);
-        this.group.add(mesh);
-        this.chunks.push({ mesh, center: new THREE.Vector3(...c.center), radius: c.radius, near });
+        rows.set(data.f32(c.o, c.n * 5), at);
+        at += c.n * 5;
       }
+      const geo = new THREE.InstancedBufferGeometry();
+      geo.index = base.index;
+      for (const [name, a] of Object.entries(base.attributes)) geo.setAttribute(name, a);
+      const buf = new THREE.InstancedInterleavedBuffer(rows, 5, 1);
+      geo.setAttribute("i_pos", new THREE.InterleavedBufferAttribute(buf, 3, 0));
+      geo.setAttribute("i_rs", new THREE.InterleavedBufferAttribute(buf, 2, 3));
+      geo.instanceCount = rows.length / 5;
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.name = `world:${inst.name}`;
+      mesh.frustumCulled = false;
+      // the river mirrors the karst towers and their greenery, not every tree and bush (a second pass over them all costs too much)
+      if (inst.name !== "karstShrub") mesh.layers.set(NO_REFLECT);
+      this.group.add(mesh);
     }
     // the Meshy pieces placed many times over (bamboo, rocks, reeds, lotus): instanced per cell
     const M4 = new THREE.Matrix4();
@@ -167,26 +173,30 @@ export class World {
     const S4 = new THREE.Vector3();
     const Z4 = new THREE.Vector3(0, 0, 1);
     for (const hi of m.heroInstances ?? []) {
-      const mat = this.heroMats.get(hi.tex.o) ?? heroMaterial(this.texture(hi.tex));
-      this.heroMats.set(hi.tex.o, mat);
+      // every copy of a kind in one draw; the GPU shrinks away the far ones (heroMaterial's `near`)
       const near = HERO_NEAR[hi.name] ?? 240;
+      const mat = heroMaterial(this.texture(hi.tex), near);
+      const n = hi.chunks.reduce((k, c) => k + c.n, 0);
+      const geo = geos[hi.mesh].clone();
+      const centers = new Float32Array(n * 3);
+      const mesh = new THREE.InstancedMesh(geo, mat, n);
+      let i = 0;
       for (const c of hi.chunks) {
-        const mesh = new THREE.InstancedMesh(geos[hi.mesh], mat, c.n);
         const rows = data.f32(c.o, c.n * 5);
-        for (let i = 0; i < c.n; i++) {
-          const r = i * 5;
+        for (let k = 0; k < c.n; k++, i++) {
+          const r = k * 5;
           P4.set(rows[r], rows[r + 1], rows[r + 2]);
           Q4.setFromAxisAngle(Z4, rows[r + 3]);
           S4.setScalar(rows[r + 4]);
           mesh.setMatrixAt(i, M4.compose(P4, Q4, S4));
+          centers.set([P4.x, P4.y, P4.z], i * 3);
         }
-        mesh.name = `world:hero:${hi.name}`;
-        // culled on the cell's sphere (an instanced mesh is tested on its own bounds, not its geometry's)
-        mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(...c.center), c.radius);
-        if (!HERO_REFLECT.has(hi.name)) mesh.layers.set(NO_REFLECT);
-        this.group.add(mesh);
-        this.chunks.push({ mesh, center: new THREE.Vector3(...c.center), radius: c.radius, near });
       }
+      geo.setAttribute("i_center", new THREE.InstancedBufferAttribute(centers, 3));
+      mesh.name = `world:hero:${hi.name}`;
+      mesh.frustumCulled = false;
+      if (!HERO_REFLECT.has(hi.name)) mesh.layers.set(NO_REFLECT);
+      this.group.add(mesh);
     }
     fs.camera.layers.enable(NO_REFLECT);
     this.group.visible = false;

@@ -57,6 +57,64 @@ if (process.argv.includes("--fill")) {
 }
 const game = new Explore(player as never, data, { pop: () => pops++ }, buildCreatures(cman, cblobs));
 game.start(true);
+// --merge: every plant type's chunks as one instanced draw, every instanced Meshy kind as one (the experiment:
+// what the JS thread saves when the GPU is left to cull)
+if (process.argv.includes("--merge")) {
+  const world = (game as unknown as { world: { group: import("three/webgpu").Group; update: (c: unknown) => void } }).world;
+  const byName = new Map<string, import("three/webgpu").Mesh[]>();
+  for (const c of world.group.children) {
+    const m = c as import("three/webgpu").Mesh;
+    if (!m.isMesh || m.name === "world:meadow") continue;
+    const g = m.geometry as import("three/webgpu").InstancedBufferGeometry;
+    if (!(g.attributes.i_pos || (m as unknown as { isInstancedMesh?: boolean }).isInstancedMesh)) continue;
+    const list = byName.get(m.name) ?? [];
+    list.push(m);
+    byName.set(m.name, list);
+  }
+  let before = 0;
+  let after = 0;
+  for (const [name, list] of byName) {
+    before += list.length;
+    after++;
+    if (list.length < 2) continue;
+    const first = list[0];
+    if ((first as unknown as { isInstancedMesh?: boolean }).isInstancedMesh) {
+      const ims = list as unknown as import("three/webgpu").InstancedMesh[];
+      const n = ims.reduce((p, q) => p + q.count, 0);
+      const merged = new THREE.InstancedMesh(first.geometry, first.material, n);
+      let k = 0;
+      const M = new THREE.Matrix4();
+      for (const im of ims) for (let i = 0; i < im.count; i++) merged.setMatrixAt(k++, (im.getMatrixAt(i, M), M));
+      merged.frustumCulled = false;
+      merged.layers.mask = first.layers.mask;
+      merged.name = name;
+      world.group.add(merged);
+    } else {
+      const rows: number[] = [];
+      for (const m of list) {
+        const g = m.geometry as import("three/webgpu").InstancedBufferGeometry;
+        const buf = (g.attributes.i_pos as unknown as { data: { array: Float32Array } }).data.array;
+        rows.push(...buf.subarray(0, g.instanceCount * 5));
+      }
+      const g0 = first.geometry as import("three/webgpu").InstancedBufferGeometry;
+      const geo = new THREE.InstancedBufferGeometry();
+      geo.index = g0.index;
+      for (const [an, a] of Object.entries(g0.attributes)) if (!an.startsWith("i_")) geo.setAttribute(an, a);
+      const buf = new THREE.InstancedInterleavedBuffer(new Float32Array(rows), 5, 1);
+      geo.setAttribute("i_pos", new THREE.InterleavedBufferAttribute(buf, 3, 0));
+      geo.setAttribute("i_rs", new THREE.InterleavedBufferAttribute(buf, 2, 3));
+      geo.instanceCount = rows.length / 5;
+      const merged = new THREE.Mesh(geo, first.material);
+      merged.frustumCulled = false;
+      merged.layers.mask = first.layers.mask;
+      merged.name = name;
+      world.group.add(merged);
+    }
+    for (const m of list) m.removeFromParent();
+  }
+  world.update = () => {};
+  console.log(`merged ${before} chunk meshes into ${after}`);
+}
 // --bundle: the valley's still pieces recorded once as render bundles (the experiment)
 if (process.argv.includes("--bundle")) {
   const world = (game as unknown as { world: { group: import("three/webgpu").Group; frozen: Set<import("three/webgpu").Object3D>; update: (c: unknown) => void } }).world;
