@@ -18,15 +18,20 @@ import * as THREE from "three/webgpu";
 import type { FilmScene } from "../runtime/scene";
 import { ENV_U } from "./shading";
 
-/** the film's greens (m_sora_skin): shade and lit */
-const SHADE = TSL.vec3(0.2, 0.42, 0.04);
-const LIT = TSL.vec3(0.64, 0.9, 0.07);
+/** the film's greens (m_sora_skin): shade and lit, and the warm glow where the light turns */
+const SHADE = TSL.vec3(0.17, 0.36, 0.04);
+const LIT = TSL.vec3(0.6, 0.86, 0.1);
+const GLOW = TSL.vec3(0.3, 0.26, 0.0);
 /** outline width on screen, as a share of the view's height per metre of distance */
 const LINE_K = TSL.uniform(0.0021).setGroup(TSL.renderGroup);
 
 /**
- * The toon skin for one part of SORA. `centre` is where, in the part's own
- * space, its roundness is measured from (the body's middle; a hand's own).
+ * The skin for one part of SORA: soft and glossy, like a jelly sweet under the
+ * sun. The light wraps round her smoothly (no hard bands), a little warmer
+ * where it turns; the ground's bounce lifts her belly; a broad sheen and a
+ * bright glint sit where the sun catches her, and a soft rim of light traces
+ * her edge. `centre` is where, in the part's own space, its roundness is
+ * measured from (the body's middle; a hand's own).
  */
 function skin(centre: [number, number, number]) {
   const m = new THREE.MeshBasicNodeMaterial();
@@ -37,20 +42,29 @@ function skin(centre: [number, number, number]) {
   const l = ENV_U.sunDir.node.normalize();
   const v = TSL.cameraPosition.sub(TSL.positionWorld).normalize();
   const ndl = n.dot(l);
-  // three tones like the film's (0 / 0.55 / 1), with crisp, slightly soft edges
-  const level = TSL.smoothstep(-0.34, -0.28, ndl).mul(0.55).add(TSL.smoothstep(0.06, 0.12, ndl).mul(0.45));
+  // wrapped light, eased; a faint step keeps a hint of the cartoon's two tones
+  const wrap = ndl.mul(0.5).add(0.5);
+  const level = TSL.mix(TSL.smoothstep(0.1, 0.92, wrap), TSL.smoothstep(0.4, 0.5, wrap), 0.2);
   let col = TSL.mix(SHADE, LIT, level);
+  // rounder still: the sky lights her top, her underside dims
+  col = col.mul(TSL.mix(TSL.float(0.78), TSL.float(1.06), n.z.mul(0.5).add(0.5)));
+  // warm where the light turns (light through the edge of a jelly)
+  const turn = TSL.float(1).sub(wrap.sub(0.42).abs().mul(3.2)).clamp(0, 1);
+  col = col.add(GLOW.mul(turn.mul(0.35)));
   // the ground's bounce lifts the shaded belly
-  const belly = TSL.smoothstep(-0.05, -0.55, n.z).mul(TSL.float(1).sub(level));
-  col = TSL.mix(col, TSL.mix(SHADE, LIT, 0.62), belly.mul(0.7));
+  const belly = TSL.smoothstep(-0.05, -0.6, n.z).mul(TSL.float(1).sub(level));
+  col = TSL.mix(col, TSL.mix(SHADE, LIT, 0.65), belly.mul(0.6));
   // tinted a little by the sun and the sky (warm at dusk)
-  col = col.mul(TSL.mix(TSL.vec3(1, 1, 1), ENV_U.sunColor.node, 0.3)).add(ENV_U.skyHorizon.node.mul(0.035));
-  // a clean highlight on the lit side
+  col = col.mul(TSL.mix(TSL.vec3(1, 1, 1), ENV_U.sunColor.node, 0.3)).add(ENV_U.skyHorizon.node.mul(0.04));
+  // a broad sheen and a small bright glint where the sun catches her
   const h = l.add(v).normalize();
-  const spec = TSL.smoothstep(0.955, 0.97, n.dot(h)).mul(0.42);
-  // a white rim where the lit side turns away
-  const rim = TSL.smoothstep(0.7, 0.9, TSL.float(1).sub(n.dot(v).abs())).mul(TSL.smoothstep(-0.2, 0.3, ndl)).mul(0.4);
-  col = col.add(TSL.vec3(1, 1, 0.85).mul(spec.add(rim)));
+  const nh = n.dot(h).max(0);
+  const sheen = TSL.smoothstep(0.75, 0.98, nh).pow(2).mul(0.16);
+  const glint = TSL.smoothstep(0.985, 0.995, nh).mul(0.55);
+  // a soft rim of light round her edge, stronger on the sunny side
+  const fres = TSL.float(1).sub(n.dot(v).max(0)).pow(3);
+  const rim = fres.mul(TSL.mix(TSL.float(0.12), TSL.float(0.42), TSL.smoothstep(-0.3, 0.5, ndl)));
+  col = col.add(TSL.vec3(1, 1, 0.9).mul(sheen.add(glint))).add(TSL.vec3(0.95, 1, 0.8).mul(rim));
   m.colorNode = TSL.vec4(col, 1);
   m.fog = false;
   return m;
