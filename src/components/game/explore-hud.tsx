@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, { FadeInDown, FadeOut, type SharedValue, useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, G, Path, Polygon, Rect } from "react-native-svg";
@@ -34,6 +34,9 @@ export function ExploreHud({
   onPause: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  // lying down, the top centre between the portrait and the map is free for news
+  const landscape = width > height;
   const top = Math.max(insets.top, 16) + 10;
   const right = Math.max(insets.right, 14) + 6;
   const left = Math.max(insets.left, 14) + 6;
@@ -52,7 +55,7 @@ export function ExploreHud({
           <Minimap manifest={manifest} state={state} map={map} top={top + 50} right={right} />
           <Quests state={state} top={top + 96} left={left} />
           <Combo count={state.combo} timer={combo} />
-          {!!state.toast && <Toast text={state.toast} top={top + 50 + MAP + 70} />}
+          {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 50 + MAP + 70} />}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right }]}>
             <PauseIcon />
           </Pressable>
@@ -214,7 +217,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(18,22,25,0.72)",
     borderWidth: 1,
     borderColor: "rgba(213,246,75,0.55)",
-    maxWidth: "86%",
+    maxWidth: "46%",
   },
   toastDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: LIME },
   toastText: { color: IVORY, fontFamily: UI_FONT, fontSize: 13 },

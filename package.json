@@ -29,6 +29,7 @@
     "expo-keep-awake": "~57.0.2",
     "expo-linking": "~57.0.1",
     "expo-router": "~57.0.2",
+    "expo-screen-orientation": "~57.0.2",
     "expo-splash-screen": "~57.0.1",
     "expo-system-ui": "~57.0.4",
     "fast-text-encoding": "^1.0.6",

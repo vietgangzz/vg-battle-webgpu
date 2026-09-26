@@ -16,7 +16,7 @@ export class OrbitCamera {
   yaw = 0;
   /** above the horizon (radians) */
   pitch = 16 * DEG;
-  private dist = 7.5;
+  private dist = 8.6;
   /** how far the view is clear of walls behind her (0..1 of dist), eased back out */
   private clear = 1;
   private lastLook = -10;
@@ -47,7 +47,7 @@ export class OrbitCamera {
   ) {
     // the point we look at: SORA, or between her and whoever she is fighting
     const want = new THREE.Vector3(hero.pos.x, hero.pos.y, hero.pos.z + 1.35);
-    let wantDist = 7.5;
+    let wantDist = 8.6;
     if (foe && !foe.dead) {
       const mid = new THREE.Vector3().lerpVectors(hero.pos, foe.pos, 0.35);
       want.set(mid.x, mid.y, want.z);
