@@ -252,7 +252,8 @@ export class World {
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.generateMipmaps = true;
-    tex.anisotropy = 4;
+    // crisp at grazing angles (a roof, a boat seen along its length)
+    tex.anisotropy = 16;
     tex.needsUpdate = true;
     return tex;
   }

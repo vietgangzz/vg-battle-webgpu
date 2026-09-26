@@ -377,7 +377,7 @@ export class Explore {
     this.world.group.visible = true;
     this.quietParticles(true);
     this.sunShadow.strength = 1;
-    this.player.post.setLite(true, 4);
+    this.player.post.setLite(true);
     applyLook(fs, MORNING);
     this.shownDusk = -1;
     fs.setExternal(this.externals, true);
@@ -453,7 +453,7 @@ export class Explore {
       this.backdropOn = true;
       this.world.group.visible = true;
       this.quietParticles(true);
-      player.post.setLite(true, 4);
+      player.post.setLite(true);
       fs.setExternal(this.externals, true);
       this.hero.remove();
       const kage = ["kage_body", "kage_eye0", "kage_eye1", "kage_band", "kage_hand_r", "kage_hand_l", "kage_blade", "kage_tail0", "kage_tail1", "kage_ghost1", "kage_ghost2", "kage_ghost3"];
@@ -1210,12 +1210,12 @@ export class Explore {
     // effects above all) is compiled again for it, and the valley's own, so none compiles mid-fight
     const player = this.player;
     const lite = player.post.isLite;
-    player.post.setLite(true, 4);
-    player.renderer.setRenderTarget(player.fs.sceneTarget);
+    player.post.setLite(true);
+    player.post.beginGamePass();
     const restore = player.fs.showAll();
     await compile(player.fs.scene);
     restore();
-    player.renderer.setRenderTarget(null);
+    player.post.endGamePass();
     if (!lite) player.post.setLite(false);
     const show = async (o: THREE.Object3D) => {
       const hidden: THREE.Object3D[] = [];
@@ -1259,9 +1259,11 @@ export class Explore {
     this.sunShadow.strength = shadowWas;
     const seen = this.world.group.visible;
     this.world.group.visible = true;
-    r.setRenderTarget(this.player.fs.sceneTarget);
+    this.player.post.setLite(true);
+    this.player.post.beginGamePass();
     r.render(this.player.fs.scene, this.player.fs.camera);
-    r.setRenderTarget(null);
+    this.player.post.endGamePass();
+    if (!lite) this.player.post.setLite(false);
     this.world.group.visible = seen;
     for (const m of this.monsters) m.body.root.visible = false;
     const alert = this.monsters[0]?.alertSprite;

@@ -65,12 +65,25 @@ export class Post {
   private readonly renderer: THREE.WebGPURenderer;
   private renderScale = 1;
   private readonly size = new THREE.Vector2();
+  /**
+   * The game's scene pass: multisampled (clean edges for a little GPU and no
+   * CPU), with a second attachment holding each pixel's distance from the
+   * lens, which multisampling resolves like colour (a multisampled depth
+   * buffer cannot be read back): the outlines and the far blur read it.
+   */
+  readonly gameTarget = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, count: 2, samples: 4 });
+  private readonly gameMRT = T.mrt({ output: T.output, dist: T.vec4(T.positionView.z.negate(), 0, 0, 1) });
+  /** outline strength, the far blur's and the sharpening's (0 = off) */
+  readonly look = { ink: T.uniform(0.75), far: T.uniform(1), sharpen: T.uniform(0.9) };
 
   constructor(
     renderer: THREE.WebGPURenderer,
     private readonly fs: FilmScene,
     film: Film,
   ) {
+    // MRT outputs find their attachments by name
+    this.gameTarget.textures[0].name = "output";
+    this.gameTarget.textures[1].name = "dist";
     const post = film.manifest.post;
     const knob = (key: string, def: number) => {
       const tr = post[key] ? film.track(post[key]) : undefined;
@@ -137,7 +150,43 @@ export class Post {
     // the game's chain: the scene straight in (no volumes), one bloom carrying both glares, the same
     // grade, flashes and vignette, no lens distortion (it costs a full-screen copy), antialiased
     this.buildLite = () => {
-      const base = T.vec4(sceneColor.rgb, 1.0);
+      const g = this.gameTarget;
+      const px = T.div(1.0, T.screenSize);
+      const tex = (i: number, uv: N) => T.texture(g.textures[i], uv);
+      // distance from the lens (the sky, never drawn into the attachment, reads 0: far)
+      const distAt = (uv: N) => {
+        const v = tex(1, uv).x;
+        return T.select(T.lessThan(v, 0.01), T.float(900.0), v);
+      };
+      const d0 = distAt(T.screenUV);
+      // the far blur: nothing near her, soft past thirty metres, a little softer toward the horizon
+      const coc = T.mul(T.smoothstep(28.0, 140.0, d0), this.look.far);
+      const radius = T.mul(coc, 2.6);
+      const taps: [number, number][] = [
+        [1, 0], [-1, 0], [0, 1], [0, -1],
+        [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7],
+      ];
+      let sum: N = tex(0, T.screenUV).rgb;
+      for (const [x, y] of taps) sum = T.add(sum, tex(0, T.add(T.screenUV, T.mul(T.vec2(x, y), T.mul(px, radius)))).rgb);
+      // a light sharpen (the four neighbours' excess taken off): every edge and texture a touch crisper
+      const centre = tex(0, T.screenUV).rgb;
+      const cross = T.add(
+        T.add(tex(0, T.add(T.screenUV, T.vec2(px.x, 0))).rgb, tex(0, T.sub(T.screenUV, T.vec2(px.x, 0))).rgb),
+        T.add(tex(0, T.add(T.screenUV, T.vec2(0, px.y))).rgb, tex(0, T.sub(T.screenUV, T.vec2(0, px.y))).rgb),
+      );
+      const sharp = T.max(T.add(centre, T.mul(T.sub(T.mul(centre, 4.0), cross), T.mul(this.look.sharpen, 0.25))), 0.0);
+      const blurred = T.div(sum, taps.length + 1);
+      let scene: N = T.mix(sharp, blurred, T.min(coc, 1.0));
+      // ink outlines where the distance jumps (a silhouette against what is behind it), thinning with distance
+      const off = T.mul(px, 1.25);
+      const dl = distAt(T.sub(T.screenUV, T.vec2(off.x, 0)));
+      const dr = distAt(T.add(T.screenUV, T.vec2(off.x, 0)));
+      const du = distAt(T.sub(T.screenUV, T.vec2(0, off.y)));
+      const dd = distAt(T.add(T.screenUV, T.vec2(0, off.y)));
+      const jump = T.max(T.max(T.sub(dl, d0), T.sub(dr, d0)), T.max(T.sub(du, d0), T.sub(dd, d0)));
+      const edge = T.mul(T.smoothstep(0.12, 0.3, T.div(jump, T.max(d0, 0.5))), T.sub(1.0, T.smoothstep(40.0, 110.0, d0)));
+      scene = T.mix(scene, T.mul(scene, 0.28), T.mul(edge, this.look.ink));
+      const base = T.vec4(scene, 1.0);
       const bw = LOOK.bloomWide;
       const bt = LOOK.bloomTight;
       const c1 = T.add(base, bloom(highlights(base, bw.threshold), bw.strength + bt.strength * 0.7, (bw.radius + bt.radius) / 2, 0));
@@ -150,8 +199,8 @@ export class Post {
       const e = T.length(T.div(T.sub(T.screenUV, 0.5), T.vec2(0.625, 0.55)));
       const mask = T.smoothstep(1.27, 0.73, e);
       const c9 = T.mul(c8, T.add(T.mul(mask, vignette), T.sub(1.0, vignette)));
-      const c10 = T.vec4(fxaa(T.vec4(T.clamp(c9, 0.0, 1.0), 1.0))).rgb;
-      return T.vec4(c10, 1.0);
+      // no FXAA: the pass is multisampled, and FXAA would only soften it
+      return T.vec4(T.clamp(c9, 0.0, 1.0), 1.0);
     };
     this.pipeline = new THREE.RenderPipeline(renderer, this.output(false, false, false));
 
@@ -183,22 +232,12 @@ export class Post {
   }
 
   /** The game's lighter chain on (the valley) or the film's full one back (the menu, the stages). */
-  /**
-   * The game's lighter chain. `samples`: the scene pass multisampled (4 in
-   * the valley: clean edges on every blade, roof and outline, for a little
-   * GPU and no CPU; the film keeps 1, its volumes read the scene's depth).
-   */
+  /** The game's lighter chain (the valley): its own multisampled scene pass, outlines, the far blur. */
   get isLite() {
     return this.lite;
   }
 
-  setLite(on: boolean, samples = 1) {
-    const want = on ? samples : 1;
-    const st = this.fs.sceneTarget;
-    if ((st.samples || 1) !== want) {
-      st.samples = want > 1 ? want : 0;
-      st.dispose();
-    }
+  setLite(on: boolean) {
     if (on === this.lite) return;
     this.lite = on;
     if (on) {
@@ -233,6 +272,13 @@ export class Post {
   render() {
     const r = this.renderer;
     this.fitTargets();
+    if (this.lite) {
+      this.beginGamePass();
+      r.render(this.fs.scene, this.fs.camera);
+      this.endGamePass();
+      this.pipeline.render();
+      return;
+    }
     r.setRenderTarget(this.fs.sceneTarget);
     r.render(this.fs.scene, this.fs.camera);
     if (!this.lite) {
@@ -243,6 +289,18 @@ export class Post {
     this.pipeline.render();
   }
 
+  /** Draw into the game's scene pass (its target and its two outputs); the valley warms its pipelines this way too. */
+  beginGamePass() {
+    this.fitTargets();
+    this.renderer.setRenderTarget(this.gameTarget);
+    this.renderer.setMRT(this.gameMRT);
+  }
+
+  endGamePass() {
+    this.renderer.setMRT(null);
+    this.renderer.setRenderTarget(null);
+  }
+
   /** Keep the scene and volume targets at the drawing buffer size times their scales. */
   private fitTargets() {
     this.renderer.getDrawingBufferSize(this.size);
@@ -250,6 +308,8 @@ export class Post {
     const h = Math.max(1, Math.round(this.size.y * this.renderScale));
     const st = this.fs.sceneTarget;
     if (st.width !== w || st.height !== h) st.setSize(w, h);
+    const gt = this.gameTarget;
+    if (this.lite && (gt.width !== w || gt.height !== h)) gt.setSize(w, h);
     const vs = this.fs.quality.volumeScale;
     const vw = Math.max(1, Math.round(w * vs));
     const vh = Math.max(1, Math.round(h * vs));
