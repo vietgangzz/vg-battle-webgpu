@@ -28,6 +28,7 @@ let cam: { eye: [number, number, number]; at: [number, number, number]; tan: num
 const player = {
   fs,
   post,
+  renderer,
   view: framing,
   pace() {
     return 1;
@@ -69,6 +70,10 @@ const shot = async (c: typeof cam) => {
 };
 (globalThis as { __SH?: unknown }).__SH = (await import("../src/battle/world/shaders")).SHADOWS;
 await run(3, [0, 0]);
+if (process.argv.includes("--dbgsun")) {
+  const { ENV_U } = await import("../src/battle/game/shading");
+  console.log("sunDir", JSON.stringify(ENV_U.sunDir.node.value), "casters", (() => { let n = 0; fs.scene.traverse((o) => { if (o.layers.isEnabled(2)) n++; }); return n; })());
+}
 if (process.argv.includes("--debug")) {
   const { SHADOWS } = await import("../src/battle/world/shaders");
   console.log("shadow0", SHADOWS[0].node.value, "hero", game.hero.pos, game.hero.groundZ);

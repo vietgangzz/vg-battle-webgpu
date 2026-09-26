@@ -34,6 +34,7 @@ let pops = 0;
 const player = {
   fs,
   post,
+  renderer,
   view: framing,
   pace() {
     return 1;
@@ -229,6 +230,19 @@ if (process.argv.includes("--tree")) {
   });
   console.log(`objects ${all}, auto-updating ${auto}, scene auto ${fs.scene.matrixAutoUpdate}`);
   console.log([...top].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => `${v} ${k}`).join("\n"));
+}
+if (process.argv.includes("--noshadow")) (game as unknown as { sunShadow: { strength: number } }).sunShadow.strength = 0;
+// --floor: the valley hidden, to see what the frame costs without it (post chain, SORA, the fight)
+if (process.argv.includes("--floor")) {
+  const w = (game as unknown as { world: { group: import("three/webgpu").Group } }).world.group;
+  for (const c of w.children) if (c.name.startsWith("world:")) c.visible = false;
+  const wu = (game as unknown as { world: { update: (c: unknown) => void } }).world;
+  wu.update = () => {};
+}
+// --nopost: the scene drawn straight to the screen (no bloom, no compositor)
+if (process.argv.includes("--nopost")) {
+  const p = post as unknown as { render: () => void };
+  p.render = () => renderer.render(fs.scene, fs.camera);
 }
 // walk in: they notice, close in
 await measure("approach", 3, () => game.setStick(0, 0.8));

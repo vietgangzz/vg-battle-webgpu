@@ -34,6 +34,7 @@ let cpuRender = 0;
 const player = {
   fs,
   post,
+  renderer,
   view: framing,
   pace() {
     return 1;

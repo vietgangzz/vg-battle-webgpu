@@ -183,7 +183,22 @@ export class Post {
   }
 
   /** The game's lighter chain on (the valley) or the film's full one back (the menu, the stages). */
-  setLite(on: boolean) {
+  /**
+   * The game's lighter chain. `samples`: the scene pass multisampled (4 in
+   * the valley: clean edges on every blade, roof and outline, for a little
+   * GPU and no CPU; the film keeps 1, its volumes read the scene's depth).
+   */
+  get isLite() {
+    return this.lite;
+  }
+
+  setLite(on: boolean, samples = 1) {
+    const want = on ? samples : 1;
+    const st = this.fs.sceneTarget;
+    if ((st.samples || 1) !== want) {
+      st.samples = want > 1 ? want : 0;
+      st.dispose();
+    }
     if (on === this.lite) return;
     this.lite = on;
     if (on) {

@@ -32,6 +32,7 @@ import type { WorldData } from "./data";
 import { DUSK, MORNING, mixLook } from "./look";
 import { Guide, type GroundQuery } from "./guide";
 import { LotusBloom } from "./lotus";
+import { CASTER, SunShadow } from "./sun-shadow";
 import { FOCUS, LAMP, SHADOWS } from "./shaders";
 import { OrbitCamera } from "./orbit";
 import { boosts, cleanRanks, NO_RANKS, pointsEarned, type Ranks } from "./skills";
@@ -188,6 +189,8 @@ export class Explore {
   private readonly guide = new Guide(NO_REFLECT);
   /** the lotus the tempest opens where she lands */
   private readonly lotus = new LotusBloom();
+  /** real shadows from the sun for SORA, the monsters and the fighters */
+  private readonly sunShadow = new SunShadow();
   private readonly groundQuery: GroundQuery = {
     height: (x, y) => this.world.ground.at(x, y),
     // the river (the paddies' shallow water is walked through)
@@ -260,6 +263,10 @@ export class Explore {
     });
     // the valley charges the ultimate twice over: the second full charge is the lotus tempest
     this.combat.energyCap = ENERGY_MAX * 2;
+    // what casts a real shadow: SORA's parts (not her afterimages), the boss, the camps' fighters
+    for (const a of [this.hero, this.boss, ...this.foes.map((f) => f.actor)])
+      for (const p of a.rig.parts) SunShadow.cast(p);
+    for (const n of this.hero.objects) if (n.includes("tail")) SunShadow.cast(fs.object(n));
     this.bolts = new Bolts(
       (x, y) => this.world.ground.at(x, y),
       (p) => this.world.solidAt(p),
@@ -278,6 +285,7 @@ export class Explore {
         if (!model) continue;
         for (let i = 0; i < HERD[kind]; i++) this.monsters.push(new Monster(kind, model, this.world.group, (seed += 7)));
       }
+      for (const m of this.monsters) SunShadow.cast(m.body.root);
     }
 
     const m = data.manifest;
@@ -368,7 +376,8 @@ export class Explore {
     const m = this.world.data.manifest;
     this.world.group.visible = true;
     this.quietParticles(true);
-    this.player.post.setLite(true);
+    this.sunShadow.strength = 1;
+    this.player.post.setLite(true, 4);
     applyLook(fs, MORNING);
     this.shownDusk = -1;
     fs.setExternal(this.externals, true);
@@ -444,7 +453,7 @@ export class Explore {
       this.backdropOn = true;
       this.world.group.visible = true;
       this.quietParticles(true);
-      player.post.setLite(true);
+      player.post.setLite(true, 4);
       fs.setExternal(this.externals, true);
       this.hero.remove();
       const kage = ["kage_body", "kage_eye0", "kage_eye1", "kage_band", "kage_hand_r", "kage_hand_l", "kage_blade", "kage_tail0", "kage_tail1", "kage_ghost1", "kage_ghost2", "kage_ghost3"];
@@ -491,6 +500,7 @@ export class Explore {
     const fs = this.player.fs;
     this.world.group.visible = false;
     this.quietParticles(false);
+    this.sunShadow.strength = 0;
     this.guide.hide();
     this.lotus.hide();
     // the film and the stages are graded as filmed, through the full chain
@@ -968,6 +978,7 @@ export class Explore {
     this.updateWaypoint();
     this.updateShadows();
     this.updateMatrices();
+    this.sunShadow.render(this.player.renderer, this.player.fs.scene, this.hero.pos, ENV_U.sunDir.node.value as THREE.Vector3);
     this.events.meters?.(this.meters);
   }
 
@@ -1195,6 +1206,17 @@ export class Explore {
     const group = this.world.group;
     const was = group.visible;
     group.visible = true;
+    // the valley's scene pass is multisampled: every pipeline the film compiled for its own pass (its
+    // effects above all) is compiled again for it, and the valley's own, so none compiles mid-fight
+    const player = this.player;
+    const lite = player.post.isLite;
+    player.post.setLite(true, 4);
+    player.renderer.setRenderTarget(player.fs.sceneTarget);
+    const restore = player.fs.showAll();
+    await compile(player.fs.scene);
+    restore();
+    player.renderer.setRenderTarget(null);
+    if (!lite) player.post.setLite(false);
     const show = async (o: THREE.Object3D) => {
       const hidden: THREE.Object3D[] = [];
       o.traverse((c) => {
@@ -1212,7 +1234,36 @@ export class Explore {
       kinds.add(m.kind);
       m.body.root.position.copy(this.hero.pos);
       await show(m.body.root);
+      // and its shadow pass (a skinned caster needs its own), drawn once now rather than on its first appearance
+      m.body.root.visible = true;
+      m.body.root.updateMatrixWorld(true);
+      const shadowWas = this.sunShadow.strength;
+      this.sunShadow.strength = 1;
+      this.sunShadow.render(this.player.renderer, this.player.fs.scene, this.hero.pos, ENV_U.sunDir.node.value as THREE.Vector3);
+      this.sunShadow.strength = shadowWas;
+      m.body.root.visible = false;
     }
+    // then every monster at once, in the picture and in the shadow pass: each one's first draw sets up
+    // its own GPU state (a pack appearing stalled a frame for it)
+    const ring = V.copy(this.hero.pos);
+    this.monsters.forEach((m, i) => {
+      const a = (i / this.monsters.length) * Math.PI * 2;
+      m.body.root.position.set(ring.x + Math.cos(a) * 4, ring.y + Math.sin(a) * 4, ring.z);
+      m.body.root.visible = true;
+      m.body.root.updateMatrixWorld(true);
+    });
+    const r = this.player.renderer;
+    const shadowWas = this.sunShadow.strength;
+    this.sunShadow.strength = 1;
+    this.sunShadow.render(r, this.player.fs.scene, this.hero.pos, ENV_U.sunDir.node.value as THREE.Vector3);
+    this.sunShadow.strength = shadowWas;
+    const seen = this.world.group.visible;
+    this.world.group.visible = true;
+    r.setRenderTarget(this.player.fs.sceneTarget);
+    r.render(this.player.fs.scene, this.player.fs.camera);
+    r.setRenderTarget(null);
+    this.world.group.visible = seen;
+    for (const m of this.monsters) m.body.root.visible = false;
     const alert = this.monsters[0]?.alertSprite;
     if (alert) await show(alert);
     await show(this.bolts.group);
@@ -1290,7 +1341,12 @@ export class Explore {
     fs.idleParticles = on ? new Set(["motes"]) : null;
     // the river mirrors the valley, SORA and the monsters; the film's effects (sparks, rings, the
     // ultimate's eighty rising slabs) are drawn once, not twice
-    for (const o of fs.placedObjects) o.layers.set(on && !o.name.startsWith("sora_") ? NO_REFLECT : 0);
+    // (keeping whether it casts a shadow)
+    for (const o of fs.placedObjects) {
+      const casts = o.layers.isEnabled(CASTER);
+      o.layers.set(on && !o.name.startsWith("sora_") ? NO_REFLECT : 0);
+      if (casts) o.layers.enable(CASTER);
+    }
     // the matrices are brought up to date once a frame here (updateMatrices), not by the renderer on every pass
     fs.scene.matrixWorldAutoUpdate = !on;
     fs.reflectEvery = on ? 2 : 1;

@@ -39,6 +39,7 @@ const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOf
 const player = {
   fs,
   post,
+  renderer,
   view: framing,
   pace() {
     return 1;

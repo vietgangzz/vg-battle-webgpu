@@ -29,6 +29,7 @@ const { fs, post, framing, tick, grab } = env;
 const player = {
   fs,
   post,
+  renderer,
   view: framing,
   renderPosed(pose: () => void) {
     tick();

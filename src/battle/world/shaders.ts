@@ -25,6 +25,7 @@ import { ENV_U, fog } from "../game/shading";
 import * as B from "../runtime/blender";
 import { diffuse } from "../runtime/lighting";
 import { shared } from "../runtime/shared";
+import { SUN_LIT } from "./sun-shadow";
 
 const U = ENV_U;
 
@@ -107,7 +108,8 @@ export function terrainMaterial(level = 0) {
     const n = std.normalize(t3.normalWorld.$);
     const v = std.normalize(std.sub(t3.cameraPosition.$, pw));
     const e = diffuse(pw, n, true);
-    const k = bands(e);
+    // in a caster's shadow the ground falls to its shade band
+    const k = bands(e) * (0.3 + 0.7 * SUN_LIT.$);
     // grass: two greens drifting over the fields, a finer mottle
     const macro = B.noise3(d.vec3f(pw.x * 0.018, pw.y * 0.018, 0), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
     const fine = B.noise3(d.vec3f(pw.x * 0.35, pw.y * 0.35, 0), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0));
@@ -290,7 +292,7 @@ export function plantMaterial(look: PlantLook, near = 1e5) {
     }
     const v = std.normalize(std.sub(t3.cameraPosition.$, pw));
     const e = diffuse(pw, n, false);
-    const k = bands(e);
+    const k = bands(e) * (0.3 + 0.7 * SUN_LIT.$);
     // each instance its own green; the wood, the flowers, the stone
     const hue = B.whiteNoise(std.floor(root));
     let lit = std.mix(lit1, lit2, hue);
@@ -389,8 +391,8 @@ export function heroMaterial(tex: THREE.Texture, near?: number) {
     const v = std.normalize(std.sub(t3.cameraPosition.$, pw));
     const e = diffuse(pw, n, true);
     const lum = e.x * 0.2126 + e.y * 0.7152 + e.z * 0.0722;
-    // two soft bands instead of three hard ones
-    const k = std.smoothstep(0.05, 0.2, lum) * 0.55 + std.smoothstep(0.2, 0.32, lum) * 0.45;
+    // two soft bands instead of three hard ones (a caster's shadow takes it down to the lower)
+    const k = (std.smoothstep(0.05, 0.2, lum) * 0.55 + std.smoothstep(0.2, 0.32, lum) * 0.45) * (0.3 + 0.7 * SUN_LIT.$);
     // only what stands between the lens and SORA dissolves (an ordered dither), so she is never hidden;
     // everything else, however near, stays whole
     const cam = t3.cameraPosition.$;
