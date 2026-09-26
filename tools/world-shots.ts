@@ -69,6 +69,9 @@ const views: View[] = [
   follow("terraces", -12, 34, 0.75),
   follow("pagoda", 46, 58, 0.72),
   { name: "valley", eye: [-120, -95, 45], at: [-10, 20, 0] },
+  follow("bank", -60, -14, 1.75, 6, 3.4),
+  follow("bank2", -118, -18, 1.2, 6, 4.2),
+  follow("bank3", 20, 6, 0.4, 6.5, 3),
 ];
 
 const bytesPerRow = Math.ceil((W * 4) / 256) * 256;
@@ -93,7 +96,10 @@ for (const v of views.filter((w) => !only || only.split(",").includes(w.name))) 
   await env.device.queue.onSubmittedWorkDone();
   const t = performance.now();
   tick();
-  post.render();
+  // --hide name,name: leave those world pieces out (to find what draws what); --raw: the scene without the compositor
+  for (const n of arg("--hide", "").split(",").filter(Boolean)) fs.scene.traverse((o) => { if (o.name.includes(n)) o.visible = false; });
+  if (process.argv.includes("--raw")) renderer.render(fs.scene, fs.camera);
+  else post.render();
   await env.device.queue.onSubmittedWorkDone();
   const ms = performance.now() - t;
   writeFileSync(`${out}/s${String(i++).padStart(2, "0")}.${env.ext}`, await grab());

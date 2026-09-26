@@ -57,8 +57,11 @@ const blobShadow = (p: d.v3f, L: d.v3f) => {
   let lit = d.f32(1);
   for (let i = 0; i < MAX_BLOBS; i++) {
     const b = U.blobs.$[i];
-    if (b.w > 0) {
-      const h = b.z - p.z;
+    const h = b.z - p.z;
+    // a body shades only what lies below it: above it, the soft edge shrank past the core and
+    // turned inside out, and everything more than ~3 m over a fighter fell into shadow (a hard line
+    // across every tall trunk, cliff and roof)
+    if (b.w > 0 && h > 0) {
       // where the body centre falls along the sun onto this point's height
       const s = std.sub(b.xyz, std.mul(L, h / std.max(L.z, 0.05)));
       const dist = std.length(std.sub(p.xy, s.xy));

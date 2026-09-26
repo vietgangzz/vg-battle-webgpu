@@ -29,6 +29,8 @@ export interface WorldManifest {
   /** `tex`: rows of sRGB bytes (RGB, bottom row first) for a hero piece's painted texture */
   statics: { name: string; mesh: number; kind: "terrain" | "karst" | "prop" | "hero" | "glow"; tex?: { o: number; w: number; h: number } }[];
   instances: { name: string; mesh: number; kind: InstanceKind; count: number; chunks: WorldChunk[] }[];
+  /** Meshy pieces placed many times: one model and texture, rows of (x, y, z, turn, scale) per cell */
+  heroInstances?: { name: string; mesh: number; tex: { o: number; w: number; h: number }; chunks: WorldChunk[] }[];
   colliders: { x: number; y: number; r: number }[];
   markers: { name: string; type: "spawn" | "shrine" | "camp" | "boss"; at: [number, number]; z: number; yaw?: number; waves?: number }[];
   spirits: { x: number; y: number; z: number }[];

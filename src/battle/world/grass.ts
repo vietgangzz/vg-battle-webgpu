@@ -237,7 +237,8 @@ export class Meadow {
         const bad = this.masks.at(x, y);
         if (bad > 0.35) continue;
         const z = this.ground.at(x, y);
-        if (z < 0.2) continue;
+        // the river's bank is bare (sand and damp earth): the lawn stops above it
+        if (z < 0.4) continue;
         let inside = false;
         for (const b of near) {
           if ((x - b.x) ** 2 + (y - b.y) ** 2 < (b.r + 0.4) ** 2) {

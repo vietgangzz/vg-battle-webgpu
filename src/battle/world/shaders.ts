@@ -89,8 +89,13 @@ const MUD = d.vec3f(0.12, 0.1, 0.05);
 const ROCK = d.vec3f(0.3, 0.29, 0.27);
 const ROCK_SHADE = d.vec3f(0.08, 0.08, 0.09);
 const PADDY = d.vec3f(0.12, 0.2, 0.12);
+/** the river's edge: pale sand at the waterline, damp dark earth above it */
+const SAND = d.vec3f(0.55, 0.47, 0.31);
+const DAMP = d.vec3f(0.22, 0.17, 0.1);
+const SAND_SHADE = d.vec3f(0.13, 0.1, 0.07);
 
-export function terrainMaterial() {
+/** The valley floor; `level` is the river's (the bank shades down to it). */
+export function terrainMaterial(level = 0) {
   const wet = t3.attribute("wet", d.f32);
   const path = t3.attribute("path", d.f32);
   const rock = t3.attribute("rock", d.f32);
@@ -128,6 +133,15 @@ export function terrainMaterial() {
     const w = std.saturate(wet.$ * (1 - field.$));
     lit = std.mix(lit, std.mul(MUD, 1.2), w * 0.7);
     shade = std.mix(shade, std.mul(MUD, 0.4), w * 0.7);
+    // the river's edge: the grass gives way to damp earth, then to sand and pebbles down at the water
+    // (never lawn straight into the river); a ragged line, not a contour
+    const above = pw.z - level + (fine - 0.5) * 0.22 + (clump - 0.5) * 0.12;
+    // (only along the river: the wet mask marks its banks)
+    const shore = (1 - std.smoothstep(0.18, 0.62, above)) * std.smoothstep(0.02, 0.3, w);
+    const sandy = 1 - std.smoothstep(0.04, 0.3, above);
+    const bank = std.mix(DAMP, std.mul(SAND, 0.85 + 0.3 * speck), sandy);
+    lit = std.mix(lit, bank, shore);
+    shade = std.mix(shade, std.mix(std.mul(DAMP, 0.45), SAND_SHADE, sandy), shore);
     let col = std.add(std.mix(shade, lit, k), std.mul(std.mul(e, lit), 0.08));
     // flooded paddies: a still mirror of the sky, tinted by the young rice
     const f = std.smoothstep(0.5, 0.9, field.$);

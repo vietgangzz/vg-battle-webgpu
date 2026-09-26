@@ -194,12 +194,30 @@ export function skyNode() {
   });
 }
 
+/** river sand and pebbles seen through the shallows, and the foam where the water laps */
+const BED = d.vec3f(0.46, 0.4, 0.27);
+const BED_DARK = d.vec3f(0.2, 0.19, 0.13);
+const FOAM = d.vec3f(0.93, 0.97, 0.95);
+
 /**
  * Water: jade in the shallows, deep below, rippling, mirroring the world above
  * (the film's planar reflector), with the sun glinting off it.
+ *
+ * With `ground` (the height of the ground under each point) and its
+ * `level`, the water knows how deep it is: at the edge it clears to the sandy
+ * bed, the mirror gives way, and a thin line of foam laps at the bank.
  */
-export function water(reflection: [Accessor<d.Vec3f>, Accessor<d.Vec3f>] | null) {
+export function water(reflection: [Accessor<d.Vec3f>, Accessor<d.Vec3f>] | null, ground?: Accessor<d.F32>, level = 0) {
   const refl = reflection?.[0];
+  const depthHere = ground
+    ? () => {
+        "use gpu";
+        return std.max(level - ground.$, 0);
+      }
+    : () => {
+        "use gpu";
+        return d.f32(4);
+      };
   // what the surface mirrors: the reflected world, or just the sky when reflections are off
   const mirrored = refl
     ? () => {
@@ -223,13 +241,24 @@ export function water(reflection: [Accessor<d.Vec3f>, Accessor<d.Vec3f>] | null)
     const chop = B.noise3(d.vec3f(pw.x * 0.9, pw.y * 0.9, t * 0.35), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0)) - 0.5;
     const n = std.normalize(d.vec3f(std.cos(a) * 0.05 + chop * 0.12, std.cos(b) * 0.06 + chop * 0.1, 1));
     const fres = 0.08 + 0.92 * std.pow(1 - std.saturate(std.dot(n, v)), 4);
-    const depth = B.noise3(d.vec3f(pw.x * 0.04, pw.y * 0.04, 0), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
-    let col = std.mix(U.waterDeep.$, U.waterShallow.$, std.saturate(depth * 1.2 - 0.1));
-    col = std.mix(col, mirrored(), fres * 0.8);
+    const tone = B.noise3(d.vec3f(pw.x * 0.04, pw.y * 0.04, 0), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
+    let col = std.mix(U.waterDeep.$, U.waterShallow.$, std.saturate(tone * 1.2 - 0.1));
+    // how deep: the shallows clear to the bed (sand, darker pebbles), the deep keeps its jade
+    const deep = depthHere();
+    const clear = 1 - std.smoothstep(0.05, 1.3, deep);
+    const pebbles = B.noise3(d.vec3f(pw.x * 2.2, pw.y * 2.2, 0), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0));
+    const bed = std.mix(BED_DARK, BED, std.smoothstep(0.35, 0.65, pebbles));
+    col = std.mix(col, std.mul(std.mul(bed, U.waterShallow.$), 2.1), clear * 0.75);
+    col = std.mix(col, mirrored(), fres * 0.8 * (1 - clear * 0.55));
     // sun glint
     const r = std.reflect(std.neg(v), n);
     const glint = std.pow(std.saturate(std.dot(r, U.sunDir.$)), 160) * 4;
     col = std.add(col, std.mul(U.sunColor.$, glint));
+    // foam lapping at the bank: a broken line that swells and draws back
+    const lap = std.sin(t * 1.7 - deep * 22 + pebbles * 5) * 0.5 + 0.5;
+    const edge = 1 - std.smoothstep(0.02, 0.07 + lap * 0.07, deep);
+    const froth = std.smoothstep(0.3, 0.6, B.noise3(d.vec3f(pw.x * 3.1, pw.y * 3.1, t * 0.4), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0)));
+    col = std.mix(col, FOAM, std.saturate(edge * (0.45 + froth * 0.55)) * 0.85);
     return d.vec4f(fog(col, pw), 1);
   }) as THREE.NodeMaterial["colorNode"];
   m.fog = false;

@@ -3,13 +3,16 @@
  * water, and every plant as instanced chunks that are drawn only when near
  * enough to matter. Also the ground's height and what cannot be walked through.
  */
+import * as t3 from "@typegpu/three";
+import * as TSL from "three/tsl";
 import * as THREE from "three/webgpu";
+import { d } from "typegpu";
 
 import { water } from "../game/shading";
 import type { FilmScene } from "../runtime/scene";
 import { Heightfield, type WorldData, type WorldMesh } from "./data";
 import { Meadow } from "./grass";
-import { haloMaterial, heroMaterial, karstMaterial, lampMaterial, mistMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
+import { haloMaterial, heroMaterial, karstMaterial, lampMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
 
 /** Plants that only matter up close (and never in the water's reflection). */
 const NEAR: Record<string, number> = { grass: 45, rice: 80, reed: 70, shrub: 110, lotus: 90, karstShrub: 400, boulder: 140, tree0: 180, tree1: 180, tree2: 180, bamboo: 120, banana: 90 };
@@ -48,6 +51,11 @@ const HERO_NEAR: Record<string, number> = {
   areca_palm: 160,
   bamboo_clump: 180,
   farmer_hut: 220,
+  // the river's edge: close-up detail
+  shore_stones: 60,
+  bank_reeds: 70,
+  river_rocks: 90,
+  tre_grove: 200,
 };
 const HERO_REFLECT = new Set(["pagoda_hall", "tam_quan_gate", "bell_tower", "village_house", "banyan_shrine", "boat_pier", "sampan", "village_gate"]);
 
@@ -74,7 +82,7 @@ export class World {
 
     for (const s of m.statics) {
       let mat: THREE.Material;
-      if (s.kind === "terrain") mat = terrainMaterial();
+      if (s.kind === "terrain") mat = terrainMaterial(m.water);
       else if (s.kind === "karst") mat = karstMaterial();
       else if (s.kind === "glow") mat = lampMaterial();
       else if (s.kind === "hero" && s.tex) {
@@ -99,24 +107,15 @@ export class World {
       this.group.add(mesh);
     }
 
-    // the river: one sheet of water at its level, mirroring the valley
-    const w = new THREE.Mesh(new THREE.PlaneGeometry(m.size * 2.2, m.size * 2.2), water(fs.reflection));
+    // the river: one sheet of water at its level, mirroring the valley; it reads the ground's height
+    // under it, so it knows its depth (clear shallows, foam at the bank)
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(m.size * 2.2, m.size * 2.2), water(fs.reflection, this.groundTexture(data), m.water));
     w.position.z = m.water - 0.02;
     w.name = "world:water";
     this.group.add(w);
 
-    // morning mist: two thin sheets low over the valley floor, drawn after everything solid
-    for (const [z, density] of [
-      [1.6, 0.34],
-      [4.5, 0.22],
-    ] as const) {
-      const mist = new THREE.Mesh(new THREE.PlaneGeometry(m.size * 1.6, m.size * 1.6), mistMaterial(z, density));
-      mist.position.z = z;
-      mist.renderOrder = 5;
-      mist.name = "world:mist";
-      mist.layers.set(NO_REFLECT);
-      this.group.add(mist);
-    }
+    // (no mist sheets: a flat layer of haze cut every trunk and cliff across at its height; the air's
+    // own height fog carries the morning)
 
     // the glow round every lantern and flame
     const halo = { silk: haloMaterial([1, 0.3, 0.1], 3.2), flame: haloMaterial([1, 0.62, 0.25], 2.6) };
@@ -161,6 +160,34 @@ export class World {
         this.chunks.push({ mesh, center: new THREE.Vector3(...c.center), radius: c.radius, near });
       }
     }
+    // the Meshy pieces placed many times over (bamboo, rocks, reeds, lotus): instanced per cell
+    const M4 = new THREE.Matrix4();
+    const Q4 = new THREE.Quaternion();
+    const P4 = new THREE.Vector3();
+    const S4 = new THREE.Vector3();
+    const Z4 = new THREE.Vector3(0, 0, 1);
+    for (const hi of m.heroInstances ?? []) {
+      const mat = this.heroMats.get(hi.tex.o) ?? heroMaterial(this.texture(hi.tex));
+      this.heroMats.set(hi.tex.o, mat);
+      const near = HERO_NEAR[hi.name] ?? 240;
+      for (const c of hi.chunks) {
+        const mesh = new THREE.InstancedMesh(geos[hi.mesh], mat, c.n);
+        const rows = data.f32(c.o, c.n * 5);
+        for (let i = 0; i < c.n; i++) {
+          const r = i * 5;
+          P4.set(rows[r], rows[r + 1], rows[r + 2]);
+          Q4.setFromAxisAngle(Z4, rows[r + 3]);
+          S4.setScalar(rows[r + 4]);
+          mesh.setMatrixAt(i, M4.compose(P4, Q4, S4));
+        }
+        mesh.name = `world:hero:${hi.name}`;
+        // culled on the cell's sphere (an instanced mesh is tested on its own bounds, not its geometry's)
+        mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(...c.center), c.radius);
+        if (!HERO_REFLECT.has(hi.name)) mesh.layers.set(NO_REFLECT);
+        this.group.add(mesh);
+        this.chunks.push({ mesh, center: new THREE.Vector3(...c.center), radius: c.radius, near });
+      }
+    }
     fs.camera.layers.enable(NO_REFLECT);
     this.group.visible = false;
     fs.scene.add(this.group);
@@ -177,6 +204,25 @@ export class World {
 
   /** The world's own pieces, which stand still (see Explore.updateMatrices). */
   readonly frozen = new Set<THREE.Object3D>();
+
+  /**
+   * The ground's height as a texture over the valley (texel centres on the
+   * heightfield's samples, filtered between them), read by the water.
+   */
+  private groundTexture(data: WorldData) {
+    const hf = data.manifest.heightfield;
+    const src = data.f32(hf.o, hf.n * hf.n);
+    const half = new Uint16Array(src.length);
+    for (let i = 0; i < src.length; i++) half[i] = THREE.DataUtils.toHalfFloat(src[i]);
+    const tex = new THREE.DataTexture(half, hf.n, hf.n, THREE.RedFormat, THREE.HalfFloatType);
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    const span = hf.cell * hf.n;
+    const uv = TSL.positionWorld.xy.sub(hf.x0 - hf.cell / 2).div(span);
+    return t3.fromTSL(TSL.texture(tex, uv).r, d.f32);
+  }
 
   /** A hero piece's painted texture: RGB rows from the blob, widened to RGBA, mipmapped. */
   private texture(t: { o: number; w: number; h: number }) {
