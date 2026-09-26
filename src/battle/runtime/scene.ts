@@ -25,6 +25,7 @@ import {
   type ScalarUniform,
 } from "./materials";
 import type { Accessor, MatInputs } from "./shader-inputs";
+import { shared } from "./shared";
 
 export interface Quality {
   /** ray-march steps through the fog and the maelstrom glow */
@@ -276,7 +277,7 @@ export class FilmScene {
       const inputs: Record<string, Accessor<d.F32>> = {};
       for (const [k, key] of Object.entries(pm.inputs)) {
         const tr = film.track(key);
-        const u = t3.uniform(tr.value(0), d.f32);
+        const u = shared(tr.value(0), d.f32);
         inputs[k] = u;
         if (!tr.constant) {
           this.bound.push({ owner: pm.name, name: k, node: u.node as unknown as ScalarUniform, track: tr, group: 0, external: false });

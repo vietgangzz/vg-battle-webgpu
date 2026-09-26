@@ -17,6 +17,7 @@
 import * as t3 from "@typegpu/three";
 import * as THREE from "three/webgpu";
 import { d, std } from "typegpu";
+import { shared } from "./shared";
 
 export const MAX_SUNS = 4;
 export const MAX_POINTS = 16;
@@ -45,7 +46,7 @@ const U = {
   ptPos: t3.uniformArray(rig.ptPos, d.vec4f),
   ptRad: t3.uniformArray(rig.ptRad, d.vec4f),
   blobs: t3.uniformArray(rig.blobs, d.vec4f),
-  ambient: t3.uniform(rig.ambient, d.vec3f),
+  ambient: shared(rig.ambient, d.vec3f),
 };
 
 const INV_PI = 1 / Math.PI;

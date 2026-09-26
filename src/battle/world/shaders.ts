@@ -24,15 +24,37 @@ import { d, std } from "typegpu";
 import { ENV_U, fog } from "../game/shading";
 import * as B from "../runtime/blender";
 import { diffuse } from "../runtime/lighting";
+import { shared } from "../runtime/shared";
 
 const U = ENV_U;
 
 /** Gusts rolling across the valley. */
-export const WIND = { strength: t3.uniform(1, d.f32) };
+export const WIND = { strength: shared(1, d.f32) };
 /** Where SORA is (her chest): what stands between her and the lens dissolves. */
-export const FOCUS = t3.uniform(new THREE.Vector3(0, 0, -1000), d.vec3f);
+export const FOCUS = shared(new THREE.Vector3(0, 0, -1000), d.vec3f);
 /** How hard the lanterns burn (they come up as the day goes down). */
-export const LAMP = { strength: t3.uniform(1, d.f32) };
+export const LAMP = { strength: shared(1, d.f32) };
+/**
+ * Soft contact shadows on the ground and the lawn under SORA and whoever is
+ * nearest her: (x, y, radius, strength) each, strength 0 for an unused one.
+ */
+export const SHADOWS = Array.from({ length: 6 }, () => shared(new THREE.Vector4(0, 0, 1, 0), d.vec4f));
+const [SH0, SH1, SH2, SH3, SH4, SH5] = SHADOWS;
+
+const blob = (pw: d.v3f, b: d.v4f) => {
+  "use gpu";
+  const r = std.length(d.vec2f(pw.x - b.x, pw.y - b.y)) / b.z;
+  // a full core under the body, feathering out past it
+  return b.w * (1 - std.smoothstep(0.3, 1, r));
+};
+
+/** How dark the contact shadows make this point of the ground (0..1). */
+const contact = (pw: d.v3f) => {
+  "use gpu";
+  const a = std.max(std.max(blob(pw, SH0.$), blob(pw, SH1.$)), blob(pw, SH2.$));
+  const b = std.max(std.max(blob(pw, SH3.$), blob(pw, SH4.$)), blob(pw, SH5.$));
+  return std.max(a, b);
+};
 
 /** 0 / 0.55 / 1 toon bands on the lit irradiance (mascot.toon). */
 const bands = (e: d.v3f) => {
@@ -117,6 +139,7 @@ export function terrainMaterial() {
       const glint = std.pow(std.saturate(std.dot(std.reflect(std.neg(v), d.vec3f(0, 0, 1)), U.sunDir.$)), 90) * 2.5;
       col = std.mix(col, std.add(mirror, std.mul(U.sunColor.$, glint)), f);
     }
+    col = std.mul(col, 1 - contact(pw));
     return d.vec4f(fog(col, pw), 1);
   });
 }
@@ -219,6 +242,8 @@ export function plantMaterial(look: PlantLook) {
   const isRock = look === "rock";
   const isFlower = look === "flower";
   const isTree = look === "tree";
+  // the lawn round SORA takes the fighters' contact shadows (it covers the ground that would)
+  const isLawn = look === "meadow" || look === "flower";
   const { pos, rs } = inst();
   const leaf = t3.attribute("leaf", d.f32);
   const ao = t3.attribute("ao", d.f32);
@@ -288,6 +313,9 @@ export function plantMaterial(look: PlantLook) {
     col = std.add(col, std.mul(std.mul(U.sunColor.$, lit), back * 2));
     // a soft sky rim
     col = std.add(col, std.mul(U.skyHorizon.$, std.smoothstep(0.65, 0.95, facing(n, v)) * 0.12 * occl));
+    if (isLawn) {
+      col = std.mul(col, 1 - contact(pw) * 0.9);
+    }
     return d.vec4f(fog(col, pw), 1);
   };
   return material(shadePlant, { position: placePlant, side: THREE.DoubleSide });

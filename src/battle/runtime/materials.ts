@@ -20,6 +20,7 @@ import { d, std } from "typegpu";
 
 import type * as B from "./blender";
 import type { Accessor, GnInputs, MatInputs } from "./shader-inputs";
+import { shared } from "./shared";
 
 export interface MaterialDef {
   fn: string;
@@ -91,7 +92,7 @@ function inputs(def: MaterialDef, env: BuildEnv, params: ParamBinding[], o: Over
   return {
     p: (name, fallback) => {
       const meta = def.params[name];
-      const acc = t3.uniform(meta?.d ?? fallback, d.f32);
+      const acc = shared(meta?.d ?? fallback, d.f32);
       params.push({ name, node: acc.node as unknown as ScalarUniform, track: meta?.t });
       return acc;
     },
@@ -252,7 +253,7 @@ export function buildParticles(
   env: BuildEnv,
 ): BuiltMaterial {
   const g: GnInputs = {
-    i: (n) => groupInputs[n] ?? t3.uniform(0, d.f32),
+    i: (n) => groupInputs[n] ?? shared(0, d.f32),
     p0: t3.attribute("i_position", d.vec3f),
     af: (n) => t3.attribute("i_" + n, d.f32),
     av: (n) => t3.attribute("i_" + n, d.vec3f),

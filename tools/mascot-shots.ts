@@ -39,6 +39,14 @@ const player = {
       const h = game.hero.pos;
       fs.setCamera(new THREE.Vector3(h.x + cam.eye[0], h.y + cam.eye[1], h.z + cam.eye[2]), new THREE.Vector3(h.x + cam.at[0], h.y + cam.at[1], h.z + cam.at[2]), cam.tan, framing);
     }
+    if (process.argv.includes("--peek")) {
+      const S = (globalThis as { __SH?: { node: { value: unknown } }[] }).__SH;
+      console.log("at render", JSON.stringify(S?.[0].node.value), JSON.stringify(S?.[1].node.value));
+    }
+    if (process.argv.includes("--bigshadow")) {
+      const S = (globalThis as { __SH?: { node: { value: { set: (...a: number[]) => void } } }[] }).__SH;
+      S?.[0].node.value.set(game.hero.pos.x, game.hero.pos.y, 3, 1);
+    }
     post.render();
     return true;
   },
@@ -59,7 +67,19 @@ const shot = async (c: typeof cam) => {
   await env.device.queue.onSubmittedWorkDone();
   writeFileSync(`${out}/s${String(n++).padStart(2, "0")}.${env.ext}`, await grab());
 };
+(globalThis as { __SH?: unknown }).__SH = (await import("../src/battle/world/shaders")).SHADOWS;
 await run(3, [0, 0]);
+if (process.argv.includes("--debug")) {
+  const { SHADOWS } = await import("../src/battle/world/shaders");
+  console.log("shadow0", SHADOWS[0].node.value, "hero", game.hero.pos, game.hero.groundZ);
+  let terrain: import("three/webgpu").Mesh | null = null;
+  fs.scene.traverse((o) => {
+    if (o.name === "world:terrain") terrain = o as never;
+  });
+  const sh = await (renderer as unknown as { debug: { getShaderAsync: (s: unknown, c: unknown, m: unknown) => Promise<{ fragmentShader: string }> } }).debug.getShaderAsync(fs.scene, fs.camera, terrain);
+  writeFileSync("/tmp/claude-501/terrain.wgsl", sh.fragmentShader);
+  console.log("wgsl written", sh.fragmentShader.length);
+}
 // SORA faces along her yaw; put the lens in front of her
 const f = game.hero.forward;
 const front = (d: number, side: number, up: number): [number, number, number] => [f.x * d - f.y * side, f.y * d + f.x * side, up];

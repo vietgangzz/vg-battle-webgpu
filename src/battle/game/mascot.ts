@@ -22,7 +22,7 @@ import { ENV_U } from "./shading";
 const SHADE = TSL.vec3(0.2, 0.42, 0.04);
 const LIT = TSL.vec3(0.64, 0.9, 0.07);
 /** outline width on screen, as a share of the view's height per metre of distance */
-const LINE_K = TSL.uniform(0.0021);
+const LINE_K = TSL.uniform(0.0021).setGroup(TSL.renderGroup);
 
 /**
  * The toon skin for one part of SORA. `centre` is where, in the part's own

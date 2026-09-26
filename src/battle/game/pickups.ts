@@ -9,6 +9,7 @@ import { d, std } from "typegpu";
 
 import type { Actor } from "./actor";
 import type { Materials } from "./shading";
+import { shared } from "../runtime/shared";
 
 const LIME = d.vec3f(0.66, 0.92, 0.07);
 
@@ -85,7 +86,7 @@ export class Orbs {
  */
 export class Barrier {
   readonly group = new THREE.Group();
-  private readonly strength = t3.uniform(0, d.f32);
+  private readonly strength = shared(0, d.f32);
   private target = 0;
   private level = 0;
 

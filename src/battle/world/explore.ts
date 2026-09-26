@@ -23,14 +23,14 @@ import { restyleSora, setLineWidth } from "../game/mascot";
 import { AMBIENT_FRAME, FxDirector } from "../game/fx";
 import { BOLT_HIT, BOSS_ENTRY, SPAWN } from "../game/moves";
 import { Orbs, TargetRing } from "../game/pickups";
-import { Materials } from "../game/shading";
+import { ENV_U, Materials } from "../game/shading";
 import type { FilmPlayer } from "../runtime/player";
 import { Bolts } from "./bolts";
 import type { CreatureModel } from "./creature";
 import { Monster, type MonsterKind, PACKS, WaterOrbs } from "./monsters";
 import type { WorldData } from "./data";
 import { DUSK, MORNING, mixLook } from "./look";
-import { FOCUS, LAMP } from "./shaders";
+import { FOCUS, LAMP, SHADOWS } from "./shaders";
 import { OrbitCamera } from "./orbit";
 import { NO_REFLECT, World } from "./world";
 
@@ -444,6 +444,7 @@ export class Explore {
       this.world.evening = look;
       // no one to keep in view
       FOCUS.node.value.set(0, 0, -1000);
+      for (const u of SHADOWS) (u.node.value as THREE.Vector4).w = 0;
       player.post.grade.saturation.value = 1.1;
       player.post.grade.contrast.value = 1.1;
       this.shownDusk = -1;
@@ -938,8 +939,48 @@ export class Explore {
     this.world.update(this.camera.position);
     this.updateBars();
     this.updateWaypoint();
+    this.updateShadows();
     this.updateMatrices();
     this.events.meters?.(this.meters);
+  }
+
+  private readonly shadowCast: { x: number; y: number; r: number; s: number; d: number }[] = Array.from({ length: 24 }, () => ({ x: 0, y: 0, r: 1, s: 0, d: 0 }));
+
+  /**
+   * Contact shadows: a soft dark pool on the ground under SORA and the
+   * fighters nearest her, fainter the higher they leap (the valley's sun
+   * casts no shadow maps; these keep everyone standing on the ground).
+   */
+  private updateShadows() {
+    const hero = this.hero;
+    const list = this.shadowCast;
+    let n = 0;
+    // each pool leans a little away from the sun, so it shows past the body that casts it
+    const sun = ENV_U.sunDir.node.value as THREE.Vector3;
+    const flat = Math.hypot(sun.x, sun.y) || 1;
+    const lean = 0.3 * (1 - Math.min(1, Math.max(0, sun.z)));
+    const add = (x: number, y: number, z: number, ground: number, r: number, s: number) => {
+      if (n >= list.length) return;
+      const lift = THREE.MathUtils.clamp((z - ground) / 2.5, 0, 0.85);
+      const e = list[n++];
+      e.x = x - (sun.x / flat) * lean * r;
+      e.y = y - (sun.y / flat) * lean * r;
+      e.r = r * (1 + lift * 0.3);
+      e.s = s * (1 - lift);
+      e.d = Math.hypot(x - hero.pos.x, y - hero.pos.y);
+    };
+    if (hero.alive || hero.hp > 0) add(hero.pos.x, hero.pos.y, hero.pos.z, hero.groundZ, 1.5, 0.62);
+    for (const m of this.monsters) if (!m.dead && !m.down) add(m.pos.x, m.pos.y, m.pos.z, m.groundZ, m.radius * 2.4 + 0.45, 0.5);
+    for (const f of this.foes) if (f.active && !f.actor.dead) add(f.actor.pos.x, f.actor.pos.y, f.actor.pos.z, f.actor.groundZ, 1.4, 0.5);
+    if (!this.boss.dead && (this.phase === "boss" || this.phase === "bossIntro")) add(this.boss.pos.x, this.boss.pos.y, this.boss.pos.z, this.boss.groundZ, 1.8, 0.55);
+    // SORA first, then the nearest
+    const used = list.slice(0, n).sort((a, b) => a.d - b.d);
+    for (let i = 0; i < SHADOWS.length; i++) {
+      const u = SHADOWS[i].node.value as THREE.Vector4;
+      const e = used[i];
+      if (e && e.d < 40) u.set(e.x, e.y, e.r, e.s);
+      else u.w = 0;
+    }
   }
 
   /** The next thing to do, and where: the nearest unlit shrine, then the nearest camp, then the pagoda. */

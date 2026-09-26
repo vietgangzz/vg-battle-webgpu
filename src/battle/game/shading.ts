@@ -16,6 +16,7 @@ import { d, std } from "typegpu";
 import * as B from "../runtime/blender";
 import { diffuse } from "../runtime/lighting";
 import type { Accessor } from "../runtime/shader-inputs";
+import { shared } from "../runtime/shared";
 
 export type RGB = [number, number, number];
 
@@ -37,22 +38,22 @@ const scalar = { fogDensity: 0.012, fogHeight: 7, cloudCover: 0.45, sunSize: 1, 
 type Scalar = keyof typeof scalar;
 
 const U = {
-  fogColor: t3.uniform(ENV.fogColor, d.vec3f),
-  skyTop: t3.uniform(ENV.skyTop, d.vec3f),
-  skyHorizon: t3.uniform(ENV.skyHorizon, d.vec3f),
-  skyBelow: t3.uniform(ENV.skyBelow, d.vec3f),
-  sunDir: t3.uniform(ENV.sunDir, d.vec3f),
-  sunColor: t3.uniform(ENV.sunColor, d.vec3f),
-  cloudTint: t3.uniform(ENV.cloudTint, d.vec3f),
-  waterDeep: t3.uniform(ENV.waterDeep, d.vec3f),
-  waterShallow: t3.uniform(ENV.waterShallow, d.vec3f),
-  cloudSeaLit: t3.uniform(ENV.cloudSeaLit, d.vec3f),
-  cloudSeaShade: t3.uniform(ENV.cloudSeaShade, d.vec3f),
-  fogDensity: t3.uniform(scalar.fogDensity, d.f32),
-  fogHeight: t3.uniform(scalar.fogHeight, d.f32),
-  cloudCover: t3.uniform(scalar.cloudCover, d.f32),
-  sunSize: t3.uniform(scalar.sunSize, d.f32),
-  stars: t3.uniform(scalar.stars, d.f32),
+  fogColor: shared(ENV.fogColor, d.vec3f),
+  skyTop: shared(ENV.skyTop, d.vec3f),
+  skyHorizon: shared(ENV.skyHorizon, d.vec3f),
+  skyBelow: shared(ENV.skyBelow, d.vec3f),
+  sunDir: shared(ENV.sunDir, d.vec3f),
+  sunColor: shared(ENV.sunColor, d.vec3f),
+  cloudTint: shared(ENV.cloudTint, d.vec3f),
+  waterDeep: shared(ENV.waterDeep, d.vec3f),
+  waterShallow: shared(ENV.waterShallow, d.vec3f),
+  cloudSeaLit: shared(ENV.cloudSeaLit, d.vec3f),
+  cloudSeaShade: shared(ENV.cloudSeaShade, d.vec3f),
+  fogDensity: shared(scalar.fogDensity, d.f32),
+  fogHeight: shared(scalar.fogHeight, d.f32),
+  cloudCover: shared(scalar.cloudCover, d.f32),
+  sunSize: shared(scalar.sunSize, d.f32),
+  stars: shared(scalar.stars, d.f32),
 };
 
 /** The environment uniforms, for other shaders that live in the same air. */
