@@ -87,6 +87,23 @@ await shot({ eye: front(2.6, 0, 1.0), at: [0, 0, 0.75], tan: 0.42 });
 await shot({ eye: front(2.2, 1.6, 1.3), at: [0, 0, 0.75], tan: 0.42 });
 await shot({ eye: front(-2.6, 0.4, 1.2), at: [0, 0, 0.8], tan: 0.42 });
 await shot({ eye: front(0.2, 2.8, 0.9), at: [0, 0, 0.75], tan: 0.42 });
+// the way to the objective from afar (--guide): the stream of arrows and the beacon
+if (process.argv.includes("--guide")) {
+  const { PACKS } = await import("../src/battle/world/monsters");
+  n = 30;
+  for (const k of [0, 2, 5]) {
+    const p = PACKS[k];
+    const goal = (game as unknown as { objective(): { at: { x: number; y: number } } | null }).objective();
+    const yaw = goal ? (Math.atan2(goal.at.x - p.x, -(goal.at.y - p.y)) * 180) / Math.PI : 0;
+    game.hero.place(new THREE.Vector3(p.x, p.y, 0), yaw);
+    game.camera.reset(game.hero);
+    await run(1.2, [0, 0]);
+    (globalThis as { __guideDebug?: boolean }).__guideDebug = true;
+    await shot(null);
+    (globalThis as { __guideDebug?: boolean }).__guideDebug = false;
+  }
+  process.exit(0);
+}
 // the headband all the way round, close: her right, back-right, back-left, left
 if (process.argv.includes("--band")) {
   n = 20;

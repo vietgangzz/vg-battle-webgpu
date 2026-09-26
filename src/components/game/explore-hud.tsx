@@ -1,14 +1,14 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import Animated, {
-  Easing,
   FadeInDown,
   FadeOut,
   type SharedValue,
   useAnimatedProps,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -78,7 +78,7 @@ export function ExploreHud({
           />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
           {/* the boss's bar takes the top of the screen; the tracker steps aside for the fight */}
-          {!state.boss && <Quests o={state.objectives} top={top + 108} left={left} />}
+          {!state.boss && <Quests o={state.objectives} top={top + 108} left={left} way={waypoint} />}
           <Combo count={state.combo} timer={combo} />
           {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 190} />}
           {!!fps && <Text style={[styles.fps, { top: top + 12, right: right + 50 }]}>{fps}</Text>}
@@ -92,9 +92,12 @@ export function ExploreHud({
   );
 }
 
+/** which waypoint kind each tracker line is (the spirits have none: they are found, not sought) */
+const ROW_KIND = [0, 1, -1, 2];
+
 /** The quest tracker: what is left in the valley, under SORA's portrait. The tab folds it away. */
 const Quests = memo(
-  function Quests({ o, top, left }: { o: HudState["objectives"]; top: number; left: number }) {
+  function Quests({ o, top, left, way }: { o: HudState["objectives"]; top: number; left: number; way: SharedValue<number[]> }) {
   const [open, setOpen] = useState(true);
   const rows: [string, string, boolean][] = [
     ["Light the shrines", `${o.shrines[0]}/${o.shrines[1]}`, o.shrines[0] === o.shrines[1]],
@@ -118,6 +121,7 @@ const Quests = memo(
           <View key={k} style={[styles.questRow, i === current && styles.questCurrent, { pointerEvents: "none" }]}>
             <View style={[styles.questDot, done && styles.questDone, i === current && styles.questDotCurrent]} />
             <Text style={[styles.questText, done && styles.questTextDone, i === current && styles.questTextCurrent]}>{k}</Text>
+            {!done && ROW_KIND[i] >= 0 && <QuestDistance way={way} kind={ROW_KIND[i]} />}
             <Text style={[styles.questCount, done && styles.questTextDone]}>{v}</Text>
           </View>
         ))}
@@ -135,49 +139,66 @@ const Quests = memo(
 );
 
 const AText = Animated.createAnimatedComponent(TextInput);
-const WAY_KIND = ["SHRINE", "CAMP", "GENERAL"];
+const SPRING = { damping: 22, stiffness: 190, mass: 0.7 };
 
 /**
- * The way to the current objective: a gold diamond over it with how far it
- * is, or, when it is off screen, pinned to the edge with an arrow pointing
- * the way. Gently bobbing.
+ * When the objective is off screen: a gold badge at the edge of the screen,
+ * its arrow turned the way to go, with how far. On screen the beacon in the
+ * valley marks it (drawn with the picture, so it never trails). The badge
+ * glides on the UI thread: springs chase where the game puts it, so it moves
+ * smoothly whatever the JS thread's timing.
  */
 const Waypoint = memo(function Waypoint({ way }: { way: SharedValue<number[]> }) {
-  const bob = useSharedValue(0);
-  useEffect(() => {
-    bob.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }), -1, true);
-  }, [bob]);
+  const { width, height } = useWindowDimensions();
+  // the arrow's angle unwrapped (so it turns the short way round), and sprung toward
+  const goal = useSharedValue(0);
+  const turned = useSharedValue(0);
+  useAnimatedReaction(
+    () => way.value[5],
+    (a) => {
+      const d = a - goal.value;
+      goal.value += d - Math.round(d / (2 * Math.PI)) * 2 * Math.PI;
+      turned.value = withSpring(goal.value, SPRING);
+    },
+  );
   const box = useAnimatedStyle(() => {
     const w = way.value;
+    const show = w[2] && !w[3] ? 1 : 0;
     return {
-      left: `${w[0] * 100}%`,
-      top: `${w[1] * 100}%`,
-      opacity: withTiming(w[2] ? 1 : 0, { duration: 250 }),
-      transform: [{ translateY: w[3] ? -6 * bob.value : 0 }],
+      opacity: withTiming(show, { duration: show ? 260 : 160 }),
+      transform: [{ translateX: withSpring(w[0] * width - 28, SPRING) }, { translateY: withSpring(w[1] * height - 28, SPRING) }],
     };
   });
-  const arrow = useAnimatedStyle(() => ({ opacity: way.value[3] ? 0 : 1, transform: [{ rotate: `${way.value[5]}rad` }] }));
-  const dist = useAnimatedProps(() => {
-    const w = way.value;
-    return { text: `${Math.round(w[4])} m` } as never;
-  });
-  const kind = useAnimatedProps(() => ({ text: WAY_KIND[Math.round(way.value[6])] ?? "" }) as never);
+  const arrow = useAnimatedStyle(() => ({ transform: [{ rotate: `${turned.value}rad` }] }));
+  const dist = useAnimatedProps(() => ({ text: `${Math.round(way.value[4])} m` }) as never);
   return (
     <Animated.View style={[styles.way, box]}>
-      <Animated.View style={[styles.wayArrow, arrow]}>
-        <Svg width={56} height={56} viewBox="0 0 56 56">
-          <Path d="M50 28 L40 21 L40 35 Z" fill={GOLD} />
-        </Svg>
-      </Animated.View>
-      <Svg width={26} height={26} viewBox="0 0 26 26">
-        <Path d="M13 1 L25 13 L13 25 L1 13 Z" fill="rgba(12,15,17,0.55)" stroke={GOLD} strokeWidth={1.8} />
-        <Path d="M13 7 L19 13 L13 19 L7 13 Z" fill={GOLD} />
-      </Svg>
-      <AText editable={false} underlineColorAndroid="transparent" style={styles.wayKind} animatedProps={kind} defaultValue="" />
+      <View style={styles.wayBadge}>
+        <Animated.View style={[StyleSheet.absoluteFill, arrow]}>
+          <Svg width={56} height={56} viewBox="0 0 56 56">
+            <Path d="M46 28 L36 20.5 L38.5 28 L36 35.5 Z" fill={GOLD} />
+          </Svg>
+        </Animated.View>
+        <View style={styles.wayCore}>
+          <Svg width={14} height={14} viewBox="0 0 14 14">
+            <Path d="M7 0.5 L13.5 7 L7 13.5 L0.5 7 Z" fill={GOLD} />
+          </Svg>
+        </View>
+      </View>
       <AText editable={false} underlineColorAndroid="transparent" style={styles.wayDist} animatedProps={dist} defaultValue="" />
     </Animated.View>
   );
 });
+
+/** How far to the objective, beside its line in the tracker (shown while it is the one the beacon marks). */
+function QuestDistance({ way, kind }: { way: SharedValue<number[]>; kind: number }) {
+  const props = useAnimatedProps(() => {
+    const w = way.value;
+    const mine = w[2] && Math.round(w[6]) === kind;
+    return { text: mine ? `${Math.round(w[4])} m` : "" } as never;
+  });
+  return <AText editable={false} underlineColorAndroid="transparent" style={styles.questDist} animatedProps={props} defaultValue="" />;
+}
 
 const Toast = memo(function Toast({ text, top }: { text: string; top: number }) {
   return (
@@ -203,10 +224,24 @@ const styles = StyleSheet.create({
   quests: { position: "absolute", width: 212, gap: 3, paddingVertical: 8, paddingRight: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: "rgba(12,15,17,0.26)", borderLeftWidth: 2, borderLeftColor: LIME },
   questHead: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 3, paddingLeft: 9 },
   questsClosed: { width: 116, paddingBottom: 5 },
-  way: { position: "absolute", width: 56, marginLeft: -28, marginTop: -13, alignItems: "center", pointerEvents: "none" },
-  wayArrow: { position: "absolute", left: 0, top: -15, width: 56, height: 56 },
-  wayKind: { marginTop: 2, color: GOLD, fontFamily: UI_FONT, fontSize: 8, letterSpacing: 2, padding: 0, textAlign: "center", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
-  wayDist: { color: IVORY, fontFamily: UI_FONT, fontSize: 11, padding: 0, textAlign: "center", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+  way: { position: "absolute", left: 0, top: 0, width: 56, alignItems: "center", pointerEvents: "none" },
+  wayBadge: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
+  wayCore: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(12,15,17,0.62)",
+    borderWidth: 1.5,
+    borderColor: GOLD,
+    shadowColor: GOLD,
+    shadowOpacity: 0.7,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  wayDist: { marginTop: -6, color: IVORY, fontFamily: UI_FONT, fontSize: 11, padding: 0, textAlign: "center", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+  questDist: { color: GOLD, fontFamily: UI_FONT, fontSize: 10, padding: 0, minWidth: 34, textAlign: "right" },
   questHeadBar: { width: 10, height: 2, backgroundColor: LIME },
   questTitle: { color: LIME, fontFamily: UI_FONT, fontSize: 9, letterSpacing: 2.4 },
   questRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingLeft: 10, paddingVertical: 2 },

@@ -30,6 +30,7 @@ import type { CreatureModel } from "./creature";
 import { Monster, type MonsterKind, PACKS, WaterOrbs } from "./monsters";
 import type { WorldData } from "./data";
 import { DUSK, MORNING, mixLook } from "./look";
+import { Guide, type GroundQuery } from "./guide";
 import { FOCUS, LAMP, SHADOWS } from "./shaders";
 import { OrbitCamera } from "./orbit";
 import { NO_REFLECT, World } from "./world";
@@ -109,6 +110,7 @@ const V2 = new THREE.Vector3();
 /** scratch for move(), kept apart from V/V2 (the actors' own updates use those through callbacks) */
 const MOVE_A = new THREE.Vector3();
 const WAY = new THREE.Vector3();
+const GQ = new THREE.Vector3();
 const MOVE_B = new THREE.Vector3();
 
 interface Foe {
@@ -178,6 +180,13 @@ export class Explore {
   private readonly wanderRng = rng(77);
   private readonly monsters: Monster[] = [];
   private readonly waterOrbs = new WaterOrbs();
+  /** the way to the next objective, drawn in the valley */
+  private readonly guide = new Guide(NO_REFLECT);
+  private readonly groundQuery: GroundQuery = {
+    height: (x, y) => this.world.ground.at(x, y),
+    // the river (the paddies' shallow water is walked through)
+    blocked: (x, y, z) => z < 0.02 || this.world.solidAt(GQ.set(x, y, z)),
+  };
   private readonly shrines: { x: number; y: number; z: number; lit: boolean; lamp: THREE.Mesh }[];
   private readonly spirits: { mesh: THREE.Mesh; home: THREE.Vector3; found: boolean }[] = [];
   private readonly checkpoint = new THREE.Vector3();
@@ -251,7 +260,7 @@ export class Explore {
     this.cloud = fs.drive("world.cloud_w", false);
     this.orbs = new Orbs(this.mats);
     this.ring = new TargetRing(this.mats);
-    this.world.group.add(this.orbs.group, this.ring.mesh, this.bolts.group, this.waterOrbs.group);
+    this.world.group.add(this.orbs.group, this.ring.mesh, this.bolts.group, this.waterOrbs.group, this.guide.group);
     // the wild monsters (when their models are loaded)
     if (creatures) {
       let seed = 5;
@@ -445,6 +454,7 @@ export class Explore {
       // no one to keep in view
       FOCUS.node.value.set(0, 0, -1000);
       for (const u of SHADOWS) (u.node.value as THREE.Vector4).w = 0;
+      this.guide.hide();
       player.post.grade.saturation.value = 1.1;
       player.post.grade.contrast.value = 1.1;
       this.shownDusk = -1;
@@ -471,6 +481,7 @@ export class Explore {
     const fs = this.player.fs;
     this.world.group.visible = false;
     this.quietParticles(false);
+    this.guide.hide();
     // the film and the stages are graded as filmed, through the full chain
     this.player.post.setLite(false);
     this.player.post.grade.saturation.value = 1;
@@ -1002,6 +1013,7 @@ export class Explore {
     const w = this.meters.waypoint;
     const o = this.objective();
     const busy = this.phase === "camp" || this.phase === "boss" || this.phase === "bossIntro" || this.phase === "title";
+    this.guide.update(DT, this.clock, this.hero.pos, o && !busy ? o.at : null, o?.kind ?? 0, this.phase === "roam", this.groundQuery);
     const dist = o ? Math.hypot(o.at.x - this.hero.pos.x, o.at.y - this.hero.pos.y) : 0;
     if (!o || busy || dist < 5) {
       w[2] = 0;
@@ -1157,6 +1169,8 @@ export class Explore {
     if (alert) await show(alert);
     await show(this.bolts.group);
     await show(this.waterOrbs.group);
+    await show(this.guide.group);
+    this.guide.hide();
     group.visible = was;
   }
 
