@@ -19,6 +19,7 @@ import { Actor, type Kind, yawOf } from "../game/actor";
 import { BossBrain, type Brain, BruteBrain, rng, ShadeBrain, Tokens } from "../game/ai";
 import { COMBO_WINDOW, Combat, ENERGY_MAX, type Pop, SHOOT_COOLDOWN, SKILL_COOLDOWN, type SoundName } from "../game/combat";
 import { applyLook } from "../game/environment";
+import { restyleSora, setLineWidth } from "../game/mascot";
 import { AMBIENT_FRAME, FxDirector } from "../game/fx";
 import { BOLT_HIT, BOSS_ENTRY, SPAWN } from "../game/moves";
 import { Orbs, TargetRing } from "../game/pickups";
@@ -29,7 +30,7 @@ import type { CreatureModel } from "./creature";
 import { Monster, type MonsterKind, PACKS, WaterOrbs } from "./monsters";
 import type { WorldData } from "./data";
 import { DUSK, MORNING, mixLook } from "./look";
-import { LAMP } from "./shaders";
+import { FOCUS, LAMP } from "./shaders";
 import { OrbitCamera } from "./orbit";
 import { World } from "./world";
 
@@ -77,6 +78,12 @@ export interface ExploreMeters {
   bars: number[];
   /** each bar's fighter level (0 = none) */
   levels: number[];
+  /**
+   * the way to the current objective: screen x, y (fractions), shown (0/1),
+   * on screen (1) or pinned to the edge (0), distance (m), the edge arrow's
+   * angle (radians, screen space, 0 = right), and what it is (0 shrine, 1 camp, 2 the General)
+   */
+  waypoint: number[];
   /** for the map: SORA's x, y and heading, the camera's heading (radians) */
   map: [number, number, number, number];
 }
@@ -101,6 +108,7 @@ const V = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 /** scratch for move(), kept apart from V/V2 (the actors' own updates use those through callbacks) */
 const MOVE_A = new THREE.Vector3();
+const WAY = new THREE.Vector3();
 const MOVE_B = new THREE.Vector3();
 
 interface Foe {
@@ -196,6 +204,7 @@ export class Explore {
     combo: 0,
     bars: new Array(BAR_SLOTS * 4).fill(0),
     levels: new Array(BAR_SLOTS).fill(0),
+    waypoint: [0, 0, 0, 0, 0, 0, 0],
     map: [0, 0, 0, 0],
   };
 
@@ -210,6 +219,9 @@ export class Explore {
     const ground = (x: number, y: number) => this.world.ground.at(x, y);
     this.mats = new Materials(fs.reflection);
     this.hero = new Actor(fs, "hero");
+    // SORA's game look (toon skin on the valley's sun, a steady ink line) and her headband streaming back
+    restyleSora(fs);
+    if (this.hero.tails) this.hero.tails.breeze = 1;
     this.boss = new Actor(fs, "captain");
     this.boss.remove();
     const foe = (kind: Kind, brain: Brain): Foe => ({ actor: new Actor(fs, kind), brain, active: false, camp: -1 });
@@ -426,6 +438,8 @@ export class Explore {
       applyLook(fs, mixLook(MORNING, DUSK, look));
       LAMP.strength.node.value = 1 + 0.7 * look;
       this.world.evening = look;
+      // no one to keep in view
+      FOCUS.node.value.set(0, 0, -1000);
       player.post.grade.saturation.value = 1.1;
       player.post.grade.contrast.value = 1.1;
       this.shownDusk = -1;
@@ -901,10 +915,63 @@ export class Explore {
     );
     // held upright the picture is narrow: widen the lens until it sees as far to the sides as it would lying down
     // a sprint widens the lens a touch: the speed reads in the edges of the frame
-    fs.setCamera(this.camera.position, this.camera.target, Math.max(0.42, 0.46 / player.view.aspect) * (1 + 0.09 * this.camera.sprint), player.view);
+    const tanV = Math.max(0.42, 0.46 / player.view.aspect) * (1 + 0.09 * this.camera.sprint);
+    fs.setCamera(this.camera.position, this.camera.target, tanV, player.view);
+    setLineWidth(tanV, fs.sceneTarget.height);
+    FOCUS.node.value.set(this.hero.pos.x, this.hero.pos.y, this.hero.pos.z + 0.8);
     this.world.update(this.camera.position);
     this.updateBars();
+    this.updateWaypoint();
     this.events.meters?.(this.meters);
+  }
+
+  /** The next thing to do, and where: the nearest unlit shrine, then the nearest camp, then the pagoda. */
+  private objective(): { at: THREE.Vector3; kind: number } | null {
+    const hero = this.hero.pos;
+    const nearest = <T extends { x: number; y: number }>(list: T[]) =>
+      list.reduce<T | null>((best, p) => (!best || Math.hypot(p.x - hero.x, p.y - hero.y) < Math.hypot(best.x - hero.x, best.y - hero.y) ? p : best), null);
+    const shrine = nearest(this.shrines.filter((s) => !s.lit));
+    if (shrine) return { at: WAY.set(shrine.x, shrine.y, shrine.z + 2.6), kind: 0 };
+    const camp = nearest(this.camps.filter((c) => c.state !== "cleared"));
+    if (camp) return { at: WAY.set(camp.x, camp.y, camp.z + 2.4), kind: 1 };
+    const b = this.world.data.manifest.markers.find((k) => k.type === "boss");
+    if (b && this.phase !== "clear" && this.phase !== "results") return { at: WAY.set(b.at[0], b.at[1], b.z + 3), kind: 2 };
+    return null;
+  }
+
+  /** Where the objective marker goes: over the objective, or pinned to the screen's edge pointing toward it. */
+  private updateWaypoint() {
+    const w = this.meters.waypoint;
+    const o = this.objective();
+    const busy = this.phase === "camp" || this.phase === "boss" || this.phase === "bossIntro" || this.phase === "title";
+    const dist = o ? Math.hypot(o.at.x - this.hero.pos.x, o.at.y - this.hero.pos.y) : 0;
+    if (!o || busy || dist < 5) {
+      w[2] = 0;
+      return;
+    }
+    const cam = this.player.fs.camera;
+    const c = V.copy(o.at).applyMatrix4(cam.matrixWorldInverse);
+    const ndc = V2.copy(o.at).project(cam);
+    const inFront = c.z < 0;
+    const onScreen = inFront && Math.abs(ndc.x) < 0.86 && Math.abs(ndc.y) < 0.8;
+    w[2] = 1;
+    w[4] = dist;
+    w[6] = o.kind;
+    if (onScreen) {
+      w[0] = (ndc.x + 1) / 2;
+      w[1] = (1 - ndc.y) / 2;
+      w[3] = 1;
+      return;
+    }
+    // off screen: the direction in the camera's view (behind her it points down), pinned to an inset ellipse
+    let ax = c.x;
+    let ay = c.y;
+    if (!inFront) ay = -Math.abs(ay) - Math.abs(c.z) * 0.5;
+    const a = Math.atan2(ay, ax);
+    w[0] = 0.5 + Math.cos(a) * 0.42;
+    w[1] = 0.5 - Math.sin(a) * 0.36;
+    w[3] = 0;
+    w[5] = -a;
   }
 
   // ---------------------------------------------------------------- hud

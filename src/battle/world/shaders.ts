@@ -29,6 +29,8 @@ const U = ENV_U;
 
 /** Gusts rolling across the valley. */
 export const WIND = { strength: t3.uniform(1, d.f32) };
+/** Where SORA is (her chest): what stands between her and the lens dissolves. */
+export const FOCUS = t3.uniform(new THREE.Vector3(0, 0, -1000), d.vec3f);
 /** How hard the lanterns burn (they come up as the day goes down). */
 export const LAMP = { strength: t3.uniform(1, d.f32) };
 
@@ -327,12 +329,18 @@ export function heroMaterial(tex: THREE.Texture) {
     const lum = e.x * 0.2126 + e.y * 0.7152 + e.z * 0.0722;
     // two soft bands instead of three hard ones
     const k = std.smoothstep(0.05, 0.2, lum) * 0.55 + std.smoothstep(0.2, 0.32, lum) * 0.45;
-    // right in front of the lens a piece dissolves (an ordered dither) instead of filling the screen:
-    // leafy clumps and eaves the orbit camera brushes past
-    const near = std.length(std.sub(t3.cameraPosition.$, pw));
+    // only what stands between the lens and SORA dissolves (an ordered dither), so she is never hidden;
+    // everything else, however near, stays whole
+    const cam = t3.cameraPosition.$;
+    const seg = std.sub(FOCUS.$, cam);
+    const len2 = std.max(std.dot(seg, seg), 1e-4);
+    const along = std.dot(std.sub(pw, cam), seg) / len2;
+    const closest = std.add(cam, std.mul(seg, std.clamp(along, 0, 1)));
+    const off = std.length(std.sub(pw, closest));
+    const blocking = std.smoothstep(0.05, 0.2, along) * (1 - std.smoothstep(0.85, 0.95, along)) * (1 - std.smoothstep(1.1, 1.9, off));
     const sc = t3.screenCoordinate.$;
     const dither = std.fract(52.9829189 * std.fract(0.06711056 * sc.x + 0.00583715 * sc.y));
-    if (std.smoothstep(1.4, 3.6, near) < dither) {
+    if (blocking * 0.85 > dither) {
       std.discard();
     }
     const base = albedo.$.xyz;

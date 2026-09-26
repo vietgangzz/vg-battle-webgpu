@@ -98,6 +98,7 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
   const stamina = useSharedValue(1);
   const winded = useSharedValue(0);
   const levels = useSharedValue<number[]>(new Array(BAR_SLOTS).fill(0));
+  const waypoint = useSharedValue<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const combo = useSharedValue(0);
   const progress = useSharedValue(0);
   const bars = useSharedValue<number[]>(new Array(BAR_SLOTS * 4).fill(0));
@@ -270,6 +271,7 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
             combo.value = m.combo;
             bars.value = [...m.bars];
             levels.value = [...m.levels];
+            waypoint.value = [...m.waypoint];
             map.value = [...m.map];
           },
           progress: (level, xp, levelled) => {
@@ -384,19 +386,7 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
       )}
       {view === "explore" && ready && roam && world && (
         <>
-          <ExploreHud
-            state={world}
-            manifest={roam.manifest}
-            energy={energy}
-            combo={combo}
-            bars={bars}
-            levels={levels}
-            map={map}
-            pops={pops}
-            onPopDone={popDone}
-            onPause={() => setPaused(true)}
-            fps={fps}
-          />
+
           {["roam", "camp", "boss", "bossIntro"].includes(world.phase) && !pausedView && (
             <Controls
               pad={roam.game}
@@ -411,6 +401,19 @@ export function GameView({ autostart = false }: { autostart?: boolean }) {
               onPress={() => save.settings.haptics && void Haptics.selectionAsync()}
             />
           )}
+          {/* over the controls: its own buttons (pause, the quest tab) take touches, the rest lets them through */}
+          <ExploreHud
+            state={world}
+            energy={energy}
+            combo={combo}
+            bars={bars}
+            levels={levels}
+            pops={pops}
+            onPopDone={popDone}
+            onPause={() => setPaused(true)}
+            fps={fps}
+            waypoint={waypoint}
+          />
           {world.phase === "results" && world.results && <ValleyCard results={world.results} onAgain={() => startExplore(true)} onMenu={() => toMenu()} />}
           {world.phase === "defeat" && <DefeatCard onRetry={() => startExplore(false)} onRestart={() => startExplore(true)} onMenu={() => toMenu()} />}
           {pausedView && <PauseCard onResume={() => setPaused(false)} onRestart={() => startExplore(true)} onSettings={() => setSettingsOpen(true)} onMenu={() => toMenu()} />}

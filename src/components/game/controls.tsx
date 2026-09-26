@@ -55,25 +55,25 @@ interface Button {
 
 
 /**
- * The thumb cluster, laid out like the big mobile action games: the attack
- * in the corner; sprint just above it; jump and dash on a close arc; the
- * skill, the kiếm khí and the ultimate a reach further up-left; the guard
- * furthest left. Everything stays in the lower part of the screen, clear of
- * the map in the top corner. Offsets (points) from the attack button's centre.
+ * The thumb cluster, laid out the way the big mobile action games do: the
+ * attack in the corner and two even arcs round it. The near arc holds what the
+ * thumb reaches for most (dash, the skill, jump, sprint); the far arc the
+ * deliberate ones (guard, kiếm khí, and the ultimate at the top). Offsets
+ * (points) from the attack button's centre.
  */
 const CLUSTER: Button[] = [
-  { id: "attack", dx: 0, dy: 0, r: 40 },
-  { id: "sprint", dx: 30, dy: -88, r: 25 },
-  { id: "jump", dx: -60, dy: -72, r: 27 },
-  { id: "dash", dx: -96, dy: 8, r: 27 },
-  { id: "skill", dx: -152, dy: -38, r: 31 },
-  { id: "shoot", dx: -118, dy: -118, r: 29 },
-  { id: "ult", dx: -194, dy: -108, r: 34 },
-  { id: "guard", dx: -182, dy: 26, r: 25 },
+  { id: "attack", dx: 0, dy: 0, r: 42 },
+  { id: "dash", dx: -97.9, dy: 3.4, r: 27 },
+  { id: "skill", dx: -84.1, dy: -61.1, r: 31 },
+  { id: "jump", dx: -27.0, dy: -94.2, r: 27 },
+  { id: "sprint", dx: 36.0, dy: -89.0, r: 25 },
+  { id: "guard", dx: -176.3, dy: -24.8, r: 25 },
+  { id: "shoot", dx: -141.8, dy: -110.8, r: 29 },
+  { id: "ult", dx: -69.7, dy: -172.5, r: 35 },
 ];
-const FINISH: Button = { id: "finish", dx: -120, dy: -210, r: 46 };
+const FINISH: Button = { id: "finish", dx: -146.5, dy: -217.2, r: 46 };
 /** attack button centre from the bottom-right corner */
-const ANCHOR = { right: 72, bottom: 66 };
+const ANCHOR = { right: 70, bottom: 64 };
 
 const STICK_R = 58;
 const KNOB_R = 24;

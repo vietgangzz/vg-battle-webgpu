@@ -1,42 +1,51 @@
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import Animated, { FadeInDown, FadeOut, type SharedValue, useAnimatedStyle } from "react-native-reanimated";
+import { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeOut,
+  type SharedValue,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, G, Path, Polygon, Rect } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 
 import type { Pop } from "@/battle/game/combat";
-import type { WorldManifest } from "@/battle/world/data";
 import type { ExploreHud as HudState } from "@/battle/world/explore";
 
 import { Banner, BossBar, Combo, DamagePop, LowHealth, Markers, PlayerPanel } from "./hud";
 import { PauseIcon } from "./icons";
-import { CRIMSON, INK, IVORY, LIME, ORANGE, UI_FONT } from "./theme";
+import { GOLD, IVORY, LIME, UI_FONT } from "./theme";
 
-/** Everything over the valley: SORA, the boss, the map, what is left to do, the news. */
+/** Everything over the valley: SORA, the boss, the way to go, what is left to do, the news. */
 export function ExploreHud({
   state,
-  manifest,
   energy,
   combo,
   bars,
   levels,
-  map,
   pops,
   onPopDone,
   onPause,
   fps,
+  waypoint,
 }: {
   state: HudState;
-  manifest: WorldManifest;
   energy: SharedValue<number>;
   combo: SharedValue<number>;
   bars: SharedValue<number[]>;
   levels: SharedValue<number[]>;
-  map: SharedValue<number[]>;
   pops: Pop[];
   onPopDone: (id: number) => void;
   onPause: () => void;
   /** frames per second actually delivered (shown small by the pause button) */
   fps?: number;
+  /** where the current objective is (see ExploreMeters.waypoint) */
+  waypoint: SharedValue<number[]>;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -52,6 +61,7 @@ export function ExploreHud({
         <>
           <LowHealth low={state.hp > 0 && state.hp / state.maxHp < 0.3} />
           <Markers bars={bars} levels={levels} />
+          <Waypoint way={waypoint} />
           {pops.map((p) => (
             <DamagePop key={p.id} pop={p} onDone={onPopDone} />
           ))}
@@ -67,11 +77,10 @@ export function ExploreHud({
             xpNext={state.xpNext}
           />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
-          <Minimap manifest={manifest} state={state} map={map} top={top + 50} right={right} />
           {/* the boss's bar takes the top of the screen; the tracker steps aside for the fight */}
           {!state.boss && <Quests state={state} top={top + 108} left={left} />}
           <Combo count={state.combo} timer={combo} />
-          {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 50 + MAP + 70} />}
+          {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 190} />}
           {!!fps && <Text style={[styles.fps, { top: top + 12, right: right + 50 }]}>{fps} FPS</Text>}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right }]}>
             <PauseIcon />
@@ -83,82 +92,9 @@ export function ExploreHud({
   );
 }
 
-// ---------------------------------------------------------------- the map
-const MAP = 116;
-/** map pixels per metre */
-const SCALE = 0.62;
-
-/**
- * A round map that turns with the camera: the river, the paths, the village,
- * the pagoda, and what waits where. SORA is the arrow at its centre.
- */
-function Minimap({ manifest, state, map, top, right }: { manifest: WorldManifest; state: HudState; map: SharedValue<number[]>; top: number; right: number }) {
-  const size = manifest.size * SCALE;
-  const half = size / 2;
-  // world (x, y) -> map pixels (north up, before turning)
-  const px = (x: number) => half + x * SCALE;
-  const py = (y: number) => half - y * SCALE;
-  const river = manifest.river.map(([x, y], i) => `${i ? "L" : "M"}${px(x)} ${py(y)}`).join(" ");
-  const paths = manifest.paths.map((p) => p.map(([x, y], i) => `${i ? "L" : "M"}${px(x)} ${py(y)}`).join(" "));
-  const [tx0, ty0, tx1, ty1] = manifest.terraces;
-  const o = state.objectives;
-  const shrines = manifest.markers.filter((m) => m.type === "shrine");
-  const camps = manifest.markers.filter((m) => m.type === "camp");
-  const boss = manifest.markers.find((m) => m.type === "boss");
-
-  // turn and slide the map so SORA sits at the centre and the camera looks up:
-  // screen = centre + R(q - P), with the layer's transform origin at its middle
-  const layer = useAnimatedStyle(() => {
-    const [x, y, , cam] = map.value;
-    const theta = cam - Math.PI / 2;
-    const dx = half - (half + x * SCALE);
-    const dy = half - (half - y * SCALE);
-    const c = Math.cos(theta);
-    const sn = Math.sin(theta);
-    return {
-      transform: [{ translateX: MAP / 2 - half + c * dx - sn * dy }, { translateY: MAP / 2 - half + sn * dx + c * dy }, { rotate: `${theta}rad` }],
-    };
-  });
-  const arrow = useAnimatedStyle(() => {
-    const [, , heading, cam] = map.value;
-    return { transform: [{ rotate: `${cam - heading}rad` }] };
-  });
-
-  return (
-    <View style={[styles.map, { top, right }]}>
-      <Animated.View style={[{ position: "absolute", left: 0, top: 0, width: size, height: size }, layer]}>
-        <Svg width={size} height={size}>
-          <Rect x={0} y={0} width={size} height={size} fill="#2F4A2A" />
-          <Rect x={px(tx0)} y={py(ty1)} width={(tx1 - tx0) * SCALE} height={(ty1 - ty0) * SCALE} fill="#5B7F4E" opacity={0.7} />
-          <Path d={river} stroke="#5FA7A0" strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-          {paths.map((d, i) => (
-            <Path key={i} d={d} stroke="#C9A877" strokeWidth={2} strokeDasharray="4 3" fill="none" />
-          ))}
-          <Circle cx={px(manifest.village[0])} cy={py(manifest.village[1])} r={manifest.village[2] * SCALE} fill="#8A6B4A" opacity={0.55} />
-          <Circle cx={px(manifest.temple[0])} cy={py(manifest.temple[1])} r={11} fill="#7A5A3A" opacity={0.6} />
-          {shrines.map((m, i) => (
-            <Rect key={m.name} x={px(m.at[0]) - 3.5} y={py(m.at[1]) - 3.5} width={7} height={7} fill={o.lit[i] ? ORANGE : IVORY} opacity={0.95} transform={`rotate(45 ${px(m.at[0])} ${py(m.at[1])})`} />
-          ))}
-          {camps.map((m, i) => (
-            <G key={m.name}>
-              <Circle cx={px(m.at[0])} cy={py(m.at[1])} r={5} fill={o.cleared[i] ? "#6F7A6B" : CRIMSON} />
-            </G>
-          ))}
-          {boss && <Polygon points={`${px(boss.at[0])},${py(boss.at[1]) - 7} ${px(boss.at[0]) + 6},${py(boss.at[1]) + 5} ${px(boss.at[0]) - 6},${py(boss.at[1]) + 5}`} fill={CRIMSON} stroke={IVORY} strokeWidth={1} />}
-        </Svg>
-      </Animated.View>
-      <Animated.View style={[styles.arrow, arrow]}>
-        <Svg width={20} height={20} viewBox="0 0 20 20">
-          <Path d="M10 1 L17 17 L10 13 L3 17 Z" fill={LIME} stroke={INK} strokeWidth={1.4} strokeLinejoin="round" />
-        </Svg>
-      </Animated.View>
-      <View style={styles.mapRing} />
-    </View>
-  );
-}
-
-/** The quest tracker: what is left in the valley, under SORA's portrait. */
+/** The quest tracker: what is left in the valley, under SORA's portrait. The tab folds it away. */
 function Quests({ state, top, left }: { state: HudState; top: number; left: number }) {
+  const [open, setOpen] = useState(true);
   const o = state.objectives;
   const rows: [string, string, boolean][] = [
     ["Light the shrines", `${o.shrines[0]}/${o.shrines[1]}`, o.shrines[0] === o.shrines[1]],
@@ -169,19 +105,68 @@ function Quests({ state, top, left }: { state: HudState; top: number; left: numb
   // the first thing not yet done is the one to chase
   const current = rows.findIndex(([, , done]) => !done);
   return (
-    <View style={[styles.quests, { top, left, pointerEvents: "none" }]}>
-      <View style={styles.questHead}>
+    <View style={[styles.quests, !open && styles.questsClosed, { top, left, pointerEvents: "box-none" }]}>
+      <Pressable onPress={() => setOpen((v) => !v)} hitSlop={12} style={styles.questHead}>
         <View style={styles.questHeadBar} />
         <Text style={styles.questTitle}>QUESTS</Text>
-      </View>
-      {rows.map(([k, v, done], i) => (
-        <View key={k} style={[styles.questRow, i === current && styles.questCurrent]}>
-          <View style={[styles.questDot, done && styles.questDone, i === current && styles.questDotCurrent]} />
-          <Text style={[styles.questText, done && styles.questTextDone, i === current && styles.questTextCurrent]}>{k}</Text>
-          <Text style={[styles.questCount, done && styles.questTextDone]}>{v}</Text>
-        </View>
-      ))}
+        <Svg width={12} height={12} viewBox="0 0 12 12" style={{ marginLeft: "auto", transform: [{ rotate: open ? "0deg" : "-90deg" }] }}>
+          <Path d="M2 4 L6 8 L10 4" stroke={LIME} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </Svg>
+      </Pressable>
+      {open &&
+        rows.map(([k, v, done], i) => (
+          <View key={k} style={[styles.questRow, i === current && styles.questCurrent, { pointerEvents: "none" }]}>
+            <View style={[styles.questDot, done && styles.questDone, i === current && styles.questDotCurrent]} />
+            <Text style={[styles.questText, done && styles.questTextDone, i === current && styles.questTextCurrent]}>{k}</Text>
+            <Text style={[styles.questCount, done && styles.questTextDone]}>{v}</Text>
+          </View>
+        ))}
     </View>
+  );
+}
+
+const AText = Animated.createAnimatedComponent(TextInput);
+const WAY_KIND = ["SHRINE", "CAMP", "GENERAL"];
+
+/**
+ * The way to the current objective: a gold diamond over it with how far it
+ * is, or, when it is off screen, pinned to the edge with an arrow pointing
+ * the way. Gently bobbing.
+ */
+function Waypoint({ way }: { way: SharedValue<number[]> }) {
+  const bob = useSharedValue(0);
+  useEffect(() => {
+    bob.value = withRepeat(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }), -1, true);
+  }, [bob]);
+  const box = useAnimatedStyle(() => {
+    const w = way.value;
+    return {
+      left: `${w[0] * 100}%`,
+      top: `${w[1] * 100}%`,
+      opacity: withTiming(w[2] ? 1 : 0, { duration: 250 }),
+      transform: [{ translateY: w[3] ? -6 * bob.value : 0 }],
+    };
+  });
+  const arrow = useAnimatedStyle(() => ({ opacity: way.value[3] ? 0 : 1, transform: [{ rotate: `${way.value[5]}rad` }] }));
+  const dist = useAnimatedProps(() => {
+    const w = way.value;
+    return { text: `${Math.round(w[4])} m` } as never;
+  });
+  const kind = useAnimatedProps(() => ({ text: WAY_KIND[Math.round(way.value[6])] ?? "" }) as never);
+  return (
+    <Animated.View style={[styles.way, box]}>
+      <Animated.View style={[styles.wayArrow, arrow]}>
+        <Svg width={56} height={56} viewBox="0 0 56 56">
+          <Path d="M50 28 L40 21 L40 35 Z" fill={GOLD} />
+        </Svg>
+      </Animated.View>
+      <Svg width={26} height={26} viewBox="0 0 26 26">
+        <Path d="M13 1 L25 13 L13 25 L1 13 Z" fill="rgba(12,15,17,0.55)" stroke={GOLD} strokeWidth={1.8} />
+        <Path d="M13 7 L19 13 L13 19 L7 13 Z" fill={GOLD} />
+      </Svg>
+      <AText editable={false} underlineColorAndroid="transparent" style={styles.wayKind} animatedProps={kind} defaultValue="" />
+      <AText editable={false} underlineColorAndroid="transparent" style={styles.wayDist} animatedProps={dist} defaultValue="" />
+    </Animated.View>
   );
 }
 
@@ -206,11 +191,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(245,243,232,0.35)",
   },
-  map: { position: "absolute", width: MAP, height: MAP, borderRadius: MAP / 2, overflow: "hidden", backgroundColor: "#2F4A2A" },
-  mapRing: { ...StyleSheet.absoluteFill, borderRadius: MAP / 2, borderWidth: 2, borderColor: "rgba(245,243,232,0.55)" },
-  arrow: { position: "absolute", left: MAP / 2 - 10, top: MAP / 2 - 10, width: 20, height: 20 },
   quests: { position: "absolute", width: 212, gap: 3, paddingVertical: 8, paddingRight: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: "rgba(12,15,17,0.26)", borderLeftWidth: 2, borderLeftColor: LIME },
   questHead: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 3, paddingLeft: 9 },
+  questsClosed: { width: 116, paddingBottom: 5 },
+  way: { position: "absolute", width: 56, marginLeft: -28, marginTop: -13, alignItems: "center", pointerEvents: "none" },
+  wayArrow: { position: "absolute", left: 0, top: -15, width: 56, height: 56 },
+  wayKind: { marginTop: 2, color: GOLD, fontFamily: UI_FONT, fontSize: 8, letterSpacing: 2, padding: 0, textAlign: "center", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+  wayDist: { color: IVORY, fontFamily: UI_FONT, fontSize: 11, padding: 0, textAlign: "center", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
   questHeadBar: { width: 10, height: 2, backgroundColor: LIME },
   questTitle: { color: LIME, fontFamily: UI_FONT, fontSize: 9, letterSpacing: 2.4 },
   questRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingLeft: 10, paddingVertical: 2 },

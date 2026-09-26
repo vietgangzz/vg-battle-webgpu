@@ -220,21 +220,43 @@ export function PlayerPanel({
   return (
     <Animated.View style={[styles.panel, { top, left, pointerEvents: "none" }, shake]}>
       <View style={styles.medallion}>
-        <Svg width={62} height={62} style={StyleSheet.absoluteFill}>
+        <Svg width={70} height={70} style={StyleSheet.absoluteFill}>
           <Defs>
             <LinearGradient id="medal" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#262C31" />
+              <Stop offset="0" stopColor="#2B333A" />
               <Stop offset="1" stopColor={INK} />
             </LinearGradient>
+            <LinearGradient id="xpArc" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor="#FFF3C4" />
+              <Stop offset="1" stopColor={GOLD} />
+            </LinearGradient>
           </Defs>
-          <Circle cx={31} cy={31} r={29} fill="url(#medal)" stroke={LIME} strokeWidth={2} />
-          <Circle cx={31} cy={31} r={25} fill="none" stroke={IVORY} strokeOpacity={0.15} strokeWidth={1} />
+          <Circle cx={35} cy={35} r={28} fill="url(#medal)" stroke={LIME} strokeWidth={2} />
+          <Circle cx={35} cy={35} r={24} fill="none" stroke={IVORY} strokeOpacity={0.15} strokeWidth={1} />
+          {/* experience toward the next level, round the portrait */}
+          {level !== undefined && xpNext ? (
+            <>
+              <Circle cx={35} cy={35} r={32.5} fill="none" stroke={INK} strokeOpacity={0.7} strokeWidth={4} />
+              <Circle
+                cx={35}
+                cy={35}
+                r={32.5}
+                fill="none"
+                stroke="url(#xpArc)"
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 32.5} ${2 * Math.PI * 32.5}`}
+                strokeDashoffset={2 * Math.PI * 32.5 * (1 - Math.min(1, (xp ?? 0) / xpNext))}
+                transform="rotate(-90 35 35)"
+              />
+            </>
+          ) : null}
         </Svg>
         <LittleGiant size={40} />
         <Animated.View style={[styles.medalFlash, flash]} />
         {level !== undefined && (
-          <View style={styles.levelBadge}>
-            <Text style={styles.levelText}>{level}</Text>
+          <View style={styles.levelChip}>
+            <Text style={styles.levelChipText}>Lv {level}</Text>
           </View>
         )}
       </View>
@@ -248,22 +270,11 @@ export function PlayerPanel({
         </View>
         <SlantBar frac={frac} color={frac > 0.3 ? LIME : ORANGE} width={188} height={12} />
         <View style={styles.energyTrack}>
-          <Animated.View style={[styles.energyFill, energyStyle, { backgroundColor: ready ? LIME : ORANGE }]} />
+          <Animated.View style={[styles.energyFill, energyStyle, { backgroundColor: ready ? GOLD : ORANGE }]} />
           {Array.from({ length: 4 }, (_, i) => (
             <View key={i} style={[styles.energyTick, { left: `${(i + 1) * 20}%` }]} />
           ))}
         </View>
-        {level !== undefined && xpNext ? (
-          <View style={styles.xpRow}>
-            <Text style={styles.xpLabel}>Lv {level}</Text>
-            <View style={styles.xpTrack}>
-              <View style={[styles.xpFill, { width: `${Math.min(100, ((xp ?? 0) / xpNext) * 100)}%` }]} />
-            </View>
-            <Text style={styles.xpText}>
-              {xp ?? 0}/{xpNext}
-            </Text>
-          </View>
-        ) : null}
         <Animated.Text style={[styles.ready, readyStyle]}>ULTIMATE READY</Animated.Text>
       </View>
     </Animated.View>
@@ -280,11 +291,18 @@ function SlantBar({ frac, color, width, height, flip }: { frac: number; color: s
   }, [frac, f, lag]);
   const fill = useAnimatedStyle(() => ({ width: `${f.value * 100}%` }));
   const ghost = useAnimatedStyle(() => ({ width: `${lag.value * 100}%` }));
+  // a glint sweeps along the bar every few seconds
+  const sweep = useSharedValue(0);
+  useEffect(() => {
+    sweep.value = withRepeat(withSequence(withTiming(0, { duration: 0 }), withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }), withDelay(2200, withTiming(1, { duration: 0 }))), -1);
+  }, [sweep]);
+  const glint = useAnimatedStyle(() => ({ left: `${-30 + sweep.value * 140}%`, opacity: sweep.value > 0 && sweep.value < 1 ? 1 : 0 }));
   return (
     <View style={[styles.slant, { width, height, transform: [{ skewX: flip ? "20deg" : "-20deg" }, ...(flip ? [{ scaleX: -1 }] : [])] }]}>
       <Animated.View style={[styles.slantGhost, ghost]} />
       <Animated.View style={[styles.slantFill, { backgroundColor: color }, fill]}>
         <View style={styles.slantShine} />
+        <Animated.View style={[styles.slantGlint, glint]} />
       </Animated.View>
       {Array.from({ length: 9 }, (_, i) => (
         <View key={i} style={[styles.slantTick, { left: `${(i + 1) * 10}%` }]} />
@@ -468,7 +486,19 @@ const styles = StyleSheet.create({
   hintDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: LIME },
   hintText: { color: IVORY, fontFamily: UI_FONT, fontSize: 13, letterSpacing: 0.5 },
   panel: { position: "absolute", flexDirection: "row", alignItems: "center", gap: 10 },
-  medallion: { width: 62, height: 62, alignItems: "center", justifyContent: "center" },
+  medallion: { width: 70, height: 70, alignItems: "center", justifyContent: "center" },
+  levelChip: {
+    position: "absolute",
+    bottom: -7,
+    alignSelf: "center",
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: 8,
+    backgroundColor: INK,
+    borderWidth: 1.2,
+    borderColor: GOLD,
+  },
+  levelChipText: { color: GOLD, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 1 },
   medalFlash: { position: "absolute", width: 58, height: 58, borderRadius: 29, backgroundColor: CRIMSON },
   levelBadge: {
     position: "absolute",
@@ -503,6 +533,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   slantFill: { position: "absolute", left: 0, top: 0, bottom: 0 },
+  slantGlint: { position: "absolute", top: 0, bottom: 0, width: "22%", backgroundColor: "rgba(255,255,255,0.55)" },
   slantShine: { position: "absolute", left: 0, right: 0, top: 0, height: "40%", backgroundColor: "rgba(255,255,255,0.35)" },
   slantGhost: { position: "absolute", left: 0, top: 0, bottom: 0, backgroundColor: IVORY, opacity: 0.85 },
   slantTick: { position: "absolute", top: 0, bottom: 0, width: 1, backgroundColor: "rgba(18,22,25,0.45)" },
@@ -517,7 +548,7 @@ const styles = StyleSheet.create({
   },
   energyFill: { position: "absolute", left: 0, top: 0, bottom: 0 },
   energyTick: { position: "absolute", top: 0, bottom: 0, width: 1.5, backgroundColor: "rgba(18,22,25,0.7)" },
-  ready: { color: LIME, fontFamily: UI_FONT, fontSize: 8, letterSpacing: 2.5, ...textShadow },
+  ready: { color: GOLD, fontFamily: UI_FONT, fontSize: 8, letterSpacing: 2.5, ...textShadow },
   boss: { position: "absolute", left: 0, right: 0, alignItems: "center", gap: 6 },
   bossHead: { flexDirection: "row", alignItems: "center", gap: 8 },
   bossName: { color: CRIMSON, fontFamily: UI_FONT, fontSize: 15, letterSpacing: 6, ...textShadow },

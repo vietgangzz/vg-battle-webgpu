@@ -373,7 +373,8 @@ export class Actor {
       const hop = Math.abs(Math.sin(this.runPhase));
       // a sprint leans hard into the run
       const sprint = THREE.MathUtils.clamp((this.speedMul - 1.2) / 0.7, 0, 1);
-      const runPose = P.pose(P.blend(P.READY, P.DASH, 0.35 + 0.45 * sprint), { hop: (0.16 + 0.06 * sprint) * hop, squash: 0.86 + 0.16 * hop });
+      // a light bob, not a jelly bounce: the silhouette (and its ink line) stays steady on the run
+      const runPose = P.pose(P.blend(P.READY, P.DASH, 0.35 + 0.45 * sprint), { hop: (0.06 + 0.03 * sprint) * hop, squash: 0.95 + 0.05 * hop });
       base = P.blend(base, runPose, this.run);
     }
     if (this.airborne) {

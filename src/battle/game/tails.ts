@@ -19,6 +19,7 @@ const D = new THREE.Vector3();
 const S = new THREE.Vector3();
 const T = new THREE.Vector3();
 const ACC = new THREE.Vector3();
+const BACK = new THREE.Vector3();
 
 interface Strand {
   seg: number;
@@ -39,6 +40,12 @@ interface Strand {
 export class Tails {
   private readonly strands: Strand[] = [];
   readonly names: string[];
+  /**
+   * A breeze tied to the fighter (0 = only the film's world wind): the tails
+   * stream back from the knot and lift, as in the film's hero shots, instead
+   * of hanging down the back when she stands still.
+   */
+  breeze = 0;
 
   constructor(fs: FilmScene, who: Who) {
     this.names = [`${who}_tail0`, `${who}_tail1`];
@@ -129,6 +136,12 @@ export class Tails {
           Math.sin(tt * 3.1 + 1.0) * 0.5,
         );
         ACC.set(0, 0, -GRAVITY).add(WIND).add(gust);
+        if (this.breeze > 0) {
+          // behind her is her body's +y; the breeze blows that way and a little up, gusting
+          BACK.set(0, 1, 0).transformDirection(body);
+          ACC.addScaledVector(BACK, this.breeze * (7.5 + 2.5 * Math.sin(tt * 2.3 + s.seed)));
+          ACC.z += this.breeze * 5.2;
+        }
         const { x, xp } = s;
         for (let i = 1; i < N; i++) {
           V.subVectors(x[i], xp[i]).multiplyScalar(damp);
