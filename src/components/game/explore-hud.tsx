@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   map: { position: "absolute", width: MAP, height: MAP, borderRadius: MAP / 2, overflow: "hidden", backgroundColor: "#2F4A2A" },
   mapRing: { ...StyleSheet.absoluteFill, borderRadius: MAP / 2, borderWidth: 2, borderColor: "rgba(245,243,232,0.55)" },
   arrow: { position: "absolute", left: MAP / 2 - 10, top: MAP / 2 - 10, width: 20, height: 20 },
-  quests: { position: "absolute", width: 168, gap: 3, paddingVertical: 8, paddingRight: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: "rgba(12,15,17,0.42)", borderLeftWidth: 2, borderLeftColor: LIME },
+  quests: { position: "absolute", width: 168, gap: 3, paddingVertical: 8, paddingRight: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: "rgba(12,15,17,0.26)", borderLeftWidth: 2, borderLeftColor: LIME },
   questHead: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 3, paddingLeft: 9 },
   questHeadBar: { width: 10, height: 2, backgroundColor: LIME },
   questTitle: { color: LIME, fontFamily: UI_FONT, fontSize: 9, letterSpacing: 2.4 },
