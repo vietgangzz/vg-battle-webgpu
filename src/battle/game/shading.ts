@@ -55,6 +55,9 @@ const U = {
   stars: t3.uniform(scalar.stars, d.f32),
 };
 
+/** The environment uniforms, for other shaders that live in the same air. */
+export const ENV_U = U;
+
 export function setScalar(name: Scalar, v: number) {
   (U[name].node as unknown as { value: number }).value = v;
 }

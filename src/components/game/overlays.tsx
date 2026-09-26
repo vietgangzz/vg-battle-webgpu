@@ -83,6 +83,58 @@ export function ResultsCard({ results, onNext, onAgain, onMenu }: { results: Res
   );
 }
 
+/** The valley freed: the rank, the numbers, the spirits found. */
+export function ValleyCard({
+  results,
+  onAgain,
+  onMenu,
+}: {
+  results: { time: number; maxCombo: number; kos: number; damage: number; spirits: number; rank: Results["rank"] };
+  onAgain: () => void;
+  onMenu: () => void;
+}) {
+  const stamp = useSharedValue(0);
+  useEffect(() => {
+    stamp.value = withDelay(500, withSpring(1, { damping: 10, stiffness: 160 }));
+  }, [stamp]);
+  const rank = useAnimatedStyle(() => ({
+    opacity: Math.min(stamp.value * 2, 1),
+    transform: [{ scale: 2.4 - 1.4 * stamp.value }, { rotate: `${(1 - stamp.value) * -18}deg` }],
+  }));
+  const m = Math.floor(results.time / 60);
+  const s = Math.floor(results.time % 60);
+  const rows: [string, string][] = [
+    ["TIME", `${m}:${String(s).padStart(2, "0")}`],
+    ["MAX COMBO", `${results.maxCombo}`],
+    ["K.O.", `${results.kos}`],
+    ["LOTUS SPIRITS", `${results.spirits}/12`],
+    ["DAMAGE TAKEN", `${Math.round(results.damage)}`],
+  ];
+  return (
+    <Scrim>
+      <Animated.View entering={FadeInDown.duration(420).easing(Easing.out(Easing.cubic))} style={styles.card}>
+        <Text style={styles.kicker}>NINH BÌNH · TRÀNG AN</Text>
+        <Text style={[styles.title, { color: LIME }]}>VALLEY FREED</Text>
+        <View style={styles.rankRow}>
+          <Animated.Text style={[styles.rank, { color: RANK_COLOR[results.rank] }, rank]}>{results.rank}</Animated.Text>
+          <View style={styles.stats}>
+            {rows.map(([k, v], i) => (
+              <Animated.View key={k} entering={FadeInDown.delay(700 + i * 110).duration(320)} style={styles.statRow}>
+                <Text style={styles.statKey}>{k}</Text>
+                <Text style={styles.statVal}>{v}</Text>
+              </Animated.View>
+            ))}
+          </View>
+        </View>
+        <Animated.View entering={FadeIn.delay(1300).duration(400)} style={styles.actions}>
+          <Button label="EXPLORE AGAIN" onPress={onAgain} primary />
+          <Button label="MENU" onPress={onMenu} />
+        </Animated.View>
+      </Animated.View>
+    </Scrim>
+  );
+}
+
 /** Down: try the arena again, or the whole road. */
 export function DefeatCard({ onRetry, onRestart, onMenu }: { onRetry: () => void; onRestart: () => void; onMenu: () => void }) {
   return (

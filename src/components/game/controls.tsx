@@ -29,6 +29,8 @@ export interface Pad {
   skill(): void;
   ult(): void;
   finish(): void;
+  /** turn the camera (a drag on the right side, off the buttons), in points */
+  look?(dx: number, dy: number): void;
 }
 
 export type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish";
@@ -88,6 +90,7 @@ export function Controls({
   const frame = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const view = useRef<View>(null);
   const stickTouch = useRef<string | null>(null);
+  const lookTouch = useRef<{ id: string; x: number; y: number } | null>(null);
   const origin = useRef({ x: 0, y: 0 });
   const held = useRef(new Map<string, ButtonId>());
   const [pressed, setPressed] = useState<Partial<Record<ButtonId, boolean>>>({});
@@ -159,6 +162,11 @@ export function Controls({
         continue;
       }
       const { width, height } = frame.current;
+      // the right side, off the buttons: turn the camera
+      if (pad.look && lookTouch.current === null && x >= width * STICK_ZONE.x) {
+        lookTouch.current = { id, x, y };
+        continue;
+      }
       if (stickTouch.current === null && x < width * STICK_ZONE.x && y > height * STICK_ZONE.y) {
         stickTouch.current = id;
         origin.current = { x, y };
@@ -174,6 +182,14 @@ export function Controls({
 
   const onMove = (e: GestureResponderEvent) => {
     for (const t of e.nativeEvent.changedTouches) {
+      const lk = lookTouch.current;
+      if (lk && String(t.identifier) === lk.id) {
+        const { x, y } = local(t);
+        pad.look?.(x - lk.x, y - lk.y);
+        lk.x = x;
+        lk.y = y;
+        continue;
+      }
       if (String(t.identifier) !== stickTouch.current) continue;
       const { x, y } = local(t);
       let dx = x - origin.current.x;
@@ -201,6 +217,7 @@ export function Controls({
   const onEnd = (e: GestureResponderEvent) => {
     for (const t of e.nativeEvent.changedTouches) {
       const id = String(t.identifier);
+      if (lookTouch.current?.id === id) lookTouch.current = null;
       if (id === stickTouch.current) {
         stickTouch.current = null;
         pad.setStick(0, 0);

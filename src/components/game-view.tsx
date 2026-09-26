@@ -10,10 +10,14 @@ import { Canvas, type CanvasRef } from "react-native-webgpu";
 import { Adventure, BAR_SLOTS, type HudState, type Pop, type SoundName } from "@/battle/game/adventure";
 import { STAGES } from "@/battle/game/stage";
 import { FilmPlayer } from "@/battle/runtime/player";
+import type { WorldManifest } from "@/battle/world/data";
+import { Explore, type ExploreHud as ExploreHudState } from "@/battle/world/explore";
+import { loadWorld } from "@/battle/world/load-world";
 import { Controls } from "@/components/game/controls";
+import { ExploreHud } from "@/components/game/explore-hud";
 import { Hud } from "@/components/game/hud";
 import { MainMenu, SettingsSheet, StageSelect } from "@/components/game/menu";
-import { DefeatCard, PauseCard, ResultsCard } from "@/components/game/overlays";
+import { DefeatCard, PauseCard, ResultsCard, ValleyCard } from "@/components/game/overlays";
 import { useSave } from "@/components/game/save";
 import { useSfx } from "@/components/game/sfx";
 
@@ -21,7 +25,7 @@ const SOUNDTRACK = require("../../assets/film/sfx.m4a");
 /** the film behind the menu: the standoff, back and forth (frames 16 .. 58) */
 const MENU_FRAMES: [number, number] = [16, 58];
 
-type Mode = "idle" | "menu" | "game";
+type Mode = "idle" | "menu" | "game" | "explore";
 type MenuPage = "home" | "stages";
 
 const EMPTY_HUD: HudState = {
@@ -62,6 +66,7 @@ export function GameView() {
   const ref = useRef<CanvasRef>(null);
   const player = useRef<FilmPlayer | null>(null);
   const game = useRef<Adventure | null>(null);
+  const explore = useRef<Explore | null>(null);
   const size = useRef({ width: 0, height: 0 });
   const mode = useRef<Mode>("idle");
   const paused = useRef(false);
@@ -75,6 +80,9 @@ export function GameView() {
   const [pausedView, setPausedView] = useState(false);
   /** the game, once built (for the controls) */
   const [pad, setPad] = useState<Adventure | null>(null);
+  const [roam, setRoam] = useState<{ game: Explore; manifest: WorldManifest } | null>(null);
+  const [world, setWorld] = useState<ExploreHudState | null>(null);
+  const map = useSharedValue<number[]>([0, 0, 0, 0]);
   const energy = useSharedValue(0);
   const skill = useSharedValue(0);
   const combo = useSharedValue(0);
@@ -117,6 +125,7 @@ export function GameView() {
         soundtrack.pause();
         setPaused(false);
         if (mode.current === "game") game.current?.leave();
+        if (mode.current === "explore") explore.current?.leave();
         player.current?.endStandby();
         clock.current.menuStart = performance.now() / 1000;
         setPage("home");
@@ -134,8 +143,24 @@ export function GameView() {
         soundtrack.pause();
         setPaused(false);
         setPops([]);
+        if (mode.current === "explore") explore.current?.leave();
         game.current?.start(i, retry);
         setMode("game");
+      });
+    },
+    [soundtrack, cut],
+  );
+
+  /** Into the valley (fresh), or back at the last lit shrine. */
+  const startExplore = useCallback(
+    (fresh = true) => {
+      cut(() => {
+        soundtrack.pause();
+        setPaused(false);
+        setPops([]);
+        if (mode.current === "game") game.current?.leave();
+        explore.current?.start(fresh);
+        setMode("explore");
       });
     },
     [soundtrack, cut],
@@ -189,6 +214,28 @@ export function GameView() {
         await g.prepare((group) => p.renderer.compileAsync(group, p.fs.camera, p.fs.scene));
         game.current = g;
         setPad(g);
+        setStage("world");
+        const wd = await loadWorld();
+        const ex = new Explore(p, wd, {
+          hud: setWorld,
+          sound: (n) => {
+            if (settings.current.sfx) sfx.play(n);
+            if (settings.current.haptics) HAPTIC[n]?.();
+          },
+          pop: (pp) => setPops((list) => [...list.slice(-9), pp]),
+          meters: (m) => {
+            energy.value = m.energy;
+            skill.value = m.skill;
+            combo.value = m.combo;
+            bars.value = [...m.bars];
+            map.value = [...m.map];
+          },
+        });
+        ex.world.group.visible = true;
+        await p.renderer.compileAsync(ex.world.group, p.fs.camera, p.fs.scene);
+        ex.world.group.visible = false;
+        explore.current = ex;
+        setRoam({ game: ex, manifest: wd.manifest });
         p.renderer.setAnimationLoop(() => {
           const now = performance.now();
           const c = clock.current;
@@ -200,6 +247,8 @@ export function GameView() {
             p.render(f / 24, now);
           } else if (mode.current === "game" && !paused.current) {
             game.current?.frame(now);
+          } else if (mode.current === "explore" && !paused.current) {
+            explore.current?.frame(now);
           }
         });
         toMenu(false);
@@ -232,12 +281,14 @@ export function GameView() {
     if (!__DEV__) return;
     (globalThis as { __game?: object }).__game = {
       stage: (i: number) => startStage(i),
+      explore: () => startExplore(true),
+      world: () => explore.current,
       menu: () => toMenu(),
       game: () => game.current,
       player: () => player.current,
       mode: () => mode.current,
     };
-  }, [startStage, toMenu]);
+  }, [startStage, startExplore, toMenu]);
 
   const curtainStyle = useAnimatedStyle(() => ({ opacity: curtain.value }));
   const ready = fontsLoaded && pad;
@@ -250,7 +301,7 @@ export function GameView() {
         <Canvas ref={ref} style={StyleSheet.absoluteFill} />
       </View>
       {view === "menu" && ready && page === "home" && (
-        <MainMenu save={save} onPlay={() => startStage(Math.min(save.unlocked, STAGES.length - 1))} onStages={() => setPage("stages")} onSettings={() => setSettingsOpen(true)} />
+        <MainMenu onExplore={() => startExplore(true)} onStages={() => setPage("stages")} onSettings={() => setSettingsOpen(true)} />
       )}
       {view === "menu" && ready && page === "stages" && <StageSelect save={save} onPick={(i) => startStage(i)} onBack={() => setPage("home")} />}
       {playing && (
@@ -277,6 +328,25 @@ export function GameView() {
           )}
           {hud.phase === "defeat" && <DefeatCard onRetry={() => startStage(hud.stage, true)} onRestart={() => startStage(hud.stage)} onMenu={() => toMenu()} />}
           {pausedView && <PauseCard onResume={() => setPaused(false)} onRestart={() => startStage(hud.stage)} onSettings={() => setSettingsOpen(true)} onMenu={() => toMenu()} />}
+        </>
+      )}
+      {view === "explore" && ready && roam && world && (
+        <>
+          <ExploreHud state={world} manifest={roam.manifest} energy={energy} combo={combo} bars={bars} map={map} pops={pops} onPopDone={popDone} onPause={() => setPaused(true)} />
+          {["roam", "camp", "boss", "bossIntro"].includes(world.phase) && !pausedView && (
+            <Controls
+              pad={roam.game}
+              energy={energy}
+              skill={skill}
+              ultReady={world.ultReady}
+              finishable={false}
+              size={save.settings.buttons}
+              onPress={() => save.settings.haptics && void Haptics.selectionAsync()}
+            />
+          )}
+          {world.phase === "results" && world.results && <ValleyCard results={world.results} onAgain={() => startExplore(true)} onMenu={() => toMenu()} />}
+          {world.phase === "defeat" && <DefeatCard onRetry={() => startExplore(false)} onRestart={() => startExplore(true)} onMenu={() => toMenu()} />}
+          {pausedView && <PauseCard onResume={() => setPaused(false)} onRestart={() => startExplore(true)} onSettings={() => setSettingsOpen(true)} onMenu={() => toMenu()} />}
         </>
       )}
       {settingsOpen && <SettingsSheet settings={save.settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />}

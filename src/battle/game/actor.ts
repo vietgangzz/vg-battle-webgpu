@@ -101,6 +101,9 @@ export class Actor {
   dead = false;
   /** who this one is fighting */
   target: Actor | null = null;
+  /** the ground under the fighter (flat at 0 on the stage roads; the valley's terrain in the world) */
+  ground: ((x: number, y: number) => number) | null = null;
+  groundZ = 0;
   ghostOn = 0;
   private run = 0;
   private runPhase = 0;
@@ -144,7 +147,7 @@ export class Actor {
   }
 
   get airborne() {
-    return this.pos.z > 0.001 || this.vz > 0;
+    return this.pos.z > this.groundZ + 0.001 || this.vz > 0;
   }
 
   get alive() {
@@ -169,7 +172,8 @@ export class Actor {
   }
 
   place(pos: THREE.Vector3, yaw: number) {
-    this.pos.copy(pos).setZ(0);
+    this.groundZ = this.ground ? this.ground(pos.x, pos.y) : 0;
+    this.pos.copy(pos).setZ(this.groundZ);
     this.vz = 0;
     this.yaw = yaw;
     this.action = null;
@@ -258,6 +262,8 @@ export class Actor {
   update(dt: number, time: number) {
     const a = this.action;
     const scripted = !!a && !a.def.air && !this.juggled;
+    const grounded = !this.airborne;
+    let lift = 0;
     if (a) {
       a.t += dt;
       const s = a.track.at(a.t);
@@ -267,10 +273,7 @@ export class Actor {
       const lungeK = a.def.impact ? P.EASES.smooth(a.t / a.def.impact) : 0;
       this.pos.x = a.startPos.x + c * s.at[0] - sn * s.at[1] + a.lunge.x * lungeK;
       this.pos.y = a.startPos.y + sn * s.at[0] + c * s.at[1] + a.lunge.y * lungeK;
-      if (scripted) {
-        this.pos.z = s.at[2] * this.scale;
-        this.vz = 0;
-      }
+      lift = s.at[2] * this.scale;
       this.yaw = a.startYaw + s.yaw;
       if (a.def.air && a.def.impact !== undefined && a.t - dt < a.def.impact && a.t >= a.def.impact) this.vz = -a.def.air.plunge;
       const g = a.def.ghosts;
@@ -282,6 +285,14 @@ export class Actor {
     } else if (!this.down) {
       this.stance(dt);
       this.ghostOn = Math.max(0, this.ghostOn - dt * 6);
+    }
+    // the ground under the new position: scripted moves ride it, walkers follow it, jumps fall back to it
+    this.groundZ = this.ground ? this.ground(this.pos.x, this.pos.y) : 0;
+    if (scripted) {
+      this.pos.z = this.groundZ + lift;
+      this.vz = 0;
+    } else if (grounded && this.vz <= 0) {
+      this.pos.z = this.groundZ;
     }
     if (!scripted) this.fall(dt);
     if (this.vanish >= 0 && dt > 0) {
@@ -295,7 +306,7 @@ export class Actor {
     this.rig.apply(this);
     this.recordGhost(time);
     if (this.tails) {
-      this.tails.step(this.rig.body.matrix, dt, time);
+      this.tails.step(this.rig.body.matrix, dt, time, this.groundZ);
       this.tails.write();
     }
   }
@@ -306,9 +317,9 @@ export class Actor {
     this.vz -= GRAVITY * dt;
     this.pos.z += this.vz * dt;
     if (this.juggled) this.pose = P.blend(P.STRUCK, P.pose(P.STRUCK, { lean: -40, squash: 1.2 }), THREE.MathUtils.clamp(-this.vz / 8, 0, 1));
-    if (this.pos.z > 0) return;
+    if (this.pos.z > this.groundZ) return;
     // landed
-    this.pos.z = 0;
+    this.pos.z = this.groundZ;
     this.vz = 0;
     if (this.juggled) {
       this.juggled = false;

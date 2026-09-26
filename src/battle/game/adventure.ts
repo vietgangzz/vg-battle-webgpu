@@ -13,28 +13,12 @@ import * as THREE from "three/webgpu";
 
 import type { FilmPlayer } from "../runtime/player";
 import { Actor, type Kind, yawOf } from "./actor";
-import { BossBrain, type Brain, BruteBrain, type Orders, ShadeBrain, Tokens } from "./ai";
+import { BossBrain, type Brain, BruteBrain, ShadeBrain, Tokens } from "./ai";
 import { FIGHT_TAN_V, type Shot, StageCamera } from "./camera";
 import { applyLook } from "./environment";
+import { COMBO_WINDOW, Combat, ENERGY_MAX, type Pop, SKILL_COOLDOWN, type SoundName } from "./combat";
 import { AMBIENT_FRAME, FxDirector } from "./fx";
-import {
-  BLOCKED,
-  BOSS_ENTRY,
-  BRUTE_SLAM,
-  FINISH_WINDUP,
-  FLINCH,
-  type HitSpec,
-  KAGE_COMBO,
-  KAGE_MOVES,
-  type MoveDef,
-  PARRY,
-  SHADE_CUT,
-  SKID,
-  SORA_COMBO,
-  SORA_MOVES,
-  SPAWN,
-  STAGGER,
-} from "./moves";
+import { BOSS_ENTRY, FINISH_WINDUP, SPAWN, STAGGER } from "./moves";
 import { Barrier, Orbs, TargetRing } from "./pickups";
 import { buildScenery, Fleet } from "./scenery";
 import { Materials } from "./shading";
@@ -88,16 +72,7 @@ export interface Meters {
   bars: number[];
 }
 
-export interface Pop {
-  id: number;
-  /** screen fractions */
-  x: number;
-  y: number;
-  value: number;
-  kind: "hit" | "crit" | "block" | "hurt" | "parry";
-}
-
-export type SoundName = "swing" | "hit" | "heavy" | "block" | "clash" | "slam" | "wave" | "dash" | "down";
+export type { Pop, SoundName } from "./combat";
 
 export interface GameEvents {
   hud?: (s: HudState) => void;
@@ -116,11 +91,7 @@ const FINALE_FROM = 268;
 const FINALE_TO = 540;
 /** film frame 16: where the folded intro leaves off */
 const OPENING_FRAME = 16;
-const PARRY_WINDOW = 0.22;
 const BROKEN_SECONDS = 9;
-const COMBO_WINDOW = 2.2;
-const SKILL_COOLDOWN = 5;
-const ENERGY_MAX = 100;
 const SHADES = 6;
 const BRUTES = 2;
 
@@ -153,34 +124,24 @@ export class Adventure {
   stageIndex = 0;
   private stage: StageDef = STAGES[0];
   phase: Phase = "title";
-  private time = 0;
   private phaseT = 0;
-  private freeze = 0;
-  private slow = 0;
   private acc = 0;
   private last = -1;
   // input
   readonly stick = new THREE.Vector2();
   guard = false;
-  private buffer = { attack: -1, jump: -1, dash: -1, skill: -1, ult: -1, finish: -1 };
-  private dashCooldown = 0;
-  private skillCooldown = 0;
   // progress
   private arena = -1;
   private wave = 0;
   private waveT = 0;
   private pending: { kind: Kind; x: number; y: number; at: number }[] = [];
   private cleared = new Set<number>();
-  private energy = 0;
-  private combo = 0;
-  private comboT = 0;
-  private stats = { maxCombo: 0, kos: 0, damage: 0 };
   private ultUntil = -1;
   private finaleStart = -1;
   private hintIndex = 0;
   private hintUntil = 0;
-  private popId = 0;
   private readonly postFrames: number[] = [];
+  private readonly combat: Combat;
   private later: { at: number; run: () => void }[] = [];
   private readonly filmCam = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
   private readonly externals: string[];
@@ -205,6 +166,17 @@ export class Adventure {
     for (let i = 0; i < BRUTES; i++) this.foes.push({ actor: new Actor(fs, "brute"), brain: new BruteBrain(5 + i * 3), active: false });
     for (const f of this.foes) f.actor.remove();
     this.fx = new FxDirector(fs);
+    this.combat = new Combat(this.fx, {
+      targets: (me) => (me === this.hero ? this.targets() : [this.hero]),
+      knockOut: (f, by) => this.knockOut(f, by),
+      project: (p) => this.project(p, { x: 0, y: 0 }),
+      shake: (n) => this.camera.shake(n),
+      sound: (n) => this.sound(n),
+      pop: (pp) => this.events.pop?.(pp),
+      ultimate: () => {
+        this.ultUntil = this.time + 6;
+      },
+    });
     this.externals = [...this.hero.objects, ...this.kage.objects];
     this.motesTime = fs.drive("motes.Time", false);
     this.cloud = fs.drive("world.cloud_w", false);
@@ -239,24 +211,29 @@ export class Adventure {
     return s;
   }
 
+  /** fight clock (stops in hit-stops) */
+  private get time() {
+    return this.combat.time;
+  }
+
   // ---------------------------------------------------------------- input
   attack() {
-    this.buffer.attack = this.time + 0.3;
+    this.combat.press("attack");
   }
   jump() {
-    this.buffer.jump = this.time + 0.15;
+    this.combat.press("jump");
   }
   dash() {
-    this.buffer.dash = this.time + 0.2;
+    this.combat.press("dash");
   }
   skill() {
-    this.buffer.skill = this.time + 0.25;
+    this.combat.press("skill");
   }
   ult() {
-    this.buffer.ult = this.time + 0.25;
+    this.combat.press("ult");
   }
   finish() {
-    this.buffer.finish = this.time + 0.5;
+    this.combat.press("finish");
   }
   setStick(x: number, y: number) {
     this.stick.set(x, y);
@@ -299,21 +276,16 @@ export class Adventure {
     this.arena = -1;
     if (changed && !retry) {
       this.cleared.clear();
-      this.energy = 0;
-      this.stats = { maxCombo: 0, kos: 0, damage: 0 };
       this.hintIndex = 0;
     }
-    this.combo = 0;
-    this.skillCooldown = 0;
-    this.time = 0;
-    this.freeze = this.slow = this.acc = 0;
+    this.combat.reset(!(changed && !retry));
+    this.acc = 0;
     this.last = -1;
     this.ultUntil = -1;
     this.later = [];
     this.finaleStart = -1;
     this.hud.results = null;
     this.hud.hint = "";
-    for (const k of Object.keys(this.buffer) as (keyof typeof this.buffer)[]) this.buffer[k] = -1;
     this.setPhase("title");
     this.say(retry ? "RETRY" : this.stage.name, retry ? "" : `STAGE ${stageIndex + 1} · ${this.stage.region.toUpperCase()}`);
   }
@@ -341,12 +313,7 @@ export class Adventure {
 
   private step() {
     this.phaseT += DT;
-    const stopped = this.freeze > 0;
-    if (stopped) this.freeze -= DT;
-    // a killing blow plays out slowly
-    if (this.slow > 0) this.slow -= DT;
-    const dt = stopped ? 0 : this.slow > 0 ? DT * 0.35 : DT;
-    this.time += dt;
+    const dt = this.combat.advance(DT);
     const hero = this.hero;
 
     if (this.later.length) {
@@ -369,22 +336,16 @@ export class Adventure {
     if (!this.boss.dead) this.boss.update(dt, this.time);
     for (const f of this.foes) if (f.active) f.actor.update(dt, this.time);
 
-    this.resolve(hero);
-    if (!this.boss.dead) this.resolve(this.boss);
-    for (const f of this.foes) if (f.active) this.resolve(f.actor);
+    this.combat.resolve(hero);
+    if (!this.boss.dead) this.combat.resolve(this.boss);
+    for (const f of this.foes) if (f.active) this.combat.resolve(f.actor);
     this.constrain();
 
     // pickups, walls, combo clock, cooldowns, tips
     const got = this.orbs.update(dt || DT * 0.2, hero.pos);
-    if (got) this.gainEnergy(got * 4);
+    if (got) this.combat.gainEnergy(got * 4);
     this.barrier.update(DT);
     this.ring.update(DT, hero.target);
-    if (this.combo > 0) {
-      this.comboT -= dt;
-      if (this.comboT <= 0) this.combo = 0;
-    }
-    this.skillCooldown = Math.max(0, this.skillCooldown - dt);
-    this.dashCooldown -= dt;
     if (this.ultUntil > 0 && this.time > this.ultUntil) {
       this.fx.release("pierce");
       this.ultUntil = -1;
@@ -396,9 +357,10 @@ export class Adventure {
     }
     if (this.hud.hint && this.time > this.hintUntil) this.hud.hint = "";
     this.fx.update(this.time);
-    this.meters.energy = this.energy / ENERGY_MAX;
-    this.meters.skill = this.skillCooldown / SKILL_COOLDOWN;
-    this.meters.combo = this.combo > 1 ? Math.max(0, this.comboT / COMBO_WINDOW) : 0;
+    const c = this.combat;
+    this.meters.energy = c.energy / ENERGY_MAX;
+    this.meters.skill = c.skillCooldown / SKILL_COOLDOWN;
+    this.meters.combo = c.combo > 1 ? Math.max(0, c.comboT / COMBO_WINDOW) : 0;
     this.meters.progress = THREE.MathUtils.clamp((hero.pos.x - this.stage.start) / (this.stage.end - 1 - this.stage.start), 0, 1);
     this.sync();
   }
@@ -465,7 +427,7 @@ export class Adventure {
       // he drops out of the sky and lands in a crouch: the ground rings
       this.after(0.55 * b.scale, () => {
         this.fx.fire("dashKage", this.time, b.pos, b.yaw, 0.05);
-        this.hitStop(3, 0.3 * b.scale);
+        this.combat.hitStop(3, 0.3 * b.scale);
         this.sound("slam");
       });
       this.say(this.stage.bossName, this.stage.bossTitle);
@@ -518,69 +480,16 @@ export class Adventure {
     hero.wish.set(f.x * this.stick.y + r.x * this.stick.x, f.y * this.stick.y + r.y * this.stick.x);
     if (hero.wish.length() > 1) hero.wish.normalize();
     if (hero.down) return;
-
-    const free = !hero.busy;
-    const guard = this.guard && free && !hero.airborne;
-    if (guard && !hero.guardHeld) hero.guardSince = this.time;
-    hero.guardHeld = guard;
-    const b = this.buffer;
-    const t = this.time;
-    const a = hero.action;
-    const foe = hero.target ?? (this.boss.alive && !this.boss.dead ? this.boss : null);
-    const recovering = !!a && a.def.impact !== undefined && a.t > a.def.impact;
-
-    if (this.phase === "broken" && b.finish >= t) {
-      b.finish = -1;
+    const c = this.combat;
+    if (this.phase === "broken" && c.buffer.finish >= c.time) {
+      c.buffer.finish = -1;
       hero.play(FINISH_WINDUP, this.boss);
       this.setPhase("windup");
       this.say("");
       return;
     }
-    if (b.ult >= t && this.energy >= ENERGY_MAX && (free || recovering)) {
-      b.ult = -1;
-      this.energy = 0;
-      this.startMove(hero, foe, SORA_MOVES.pierce);
-      this.say("HEAVEN PIERCE", "");
-      return;
-    }
-    if (b.skill >= t && this.skillCooldown <= 0 && (free || recovering)) {
-      b.skill = -1;
-      this.skillCooldown = SKILL_COOLDOWN;
-      const dir = hero.wish.lengthSq() > 0.04 ? V.set(hero.wish.x, hero.wish.y, 0) : null;
-      this.startMove(hero, dir ? null : foe, SORA_MOVES.streak, dir?.clone());
-      return;
-    }
-    if (b.jump >= t && free && !hero.airborne) {
-      b.jump = -1;
-      if (hero.jump()) this.sound("dash");
-      return;
-    }
-    if (b.dash >= t && this.dashCooldown <= 0) {
-      const cancel = free || (recovering && a!.def.name !== "dash");
-      if (cancel && !["flinch", "skid", "stagger", "getup"].includes(a?.def.name ?? "") && !hero.airborne) {
-        const dir = hero.wish.lengthSq() > 0.04 ? V.set(hero.wish.x, hero.wish.y, 0) : hero.forward;
-        this.startMove(hero, null, undefined, dir.clone());
-        b.dash = -1;
-        this.dashCooldown = 0.45;
-        return;
-      }
-    }
-    if (b.attack >= t) {
-      let next: MoveDef | null = null;
-      if (hero.airborne && free) next = SORA_MOVES.airCut;
-      else if (!a) next = SORA_COMBO[t < hero.comboUntil ? hero.comboStep : 0];
-      else if (a.def.name === "dash" && a.t > 0.22) next = SORA_MOVES.thrust;
-      else if (a.def.chain !== undefined && a.t >= a.def.chain) next = SORA_COMBO[hero.comboStep];
-      if (next) {
-        this.startMove(hero, foe, next);
-        const i = SORA_COMBO.indexOf(next);
-        if (i >= 0) {
-          hero.comboStep = (i + 1) % SORA_COMBO.length;
-          hero.comboUntil = t + next.keys[next.keys.length - 1].t + 0.35;
-        }
-        b.attack = -1;
-      }
-    }
+    const foe = hero.target ?? (this.boss.alive && !this.boss.dead ? this.boss : null);
+    if (c.control(hero, this.guard, foe) === "ult") this.say("HEAVEN PIERCE", "");
   }
 
   // ---------------------------------------------------------------- the others
@@ -588,70 +497,12 @@ export class Adventure {
     const hero = this.hero;
     for (const f of this.foes) {
       if (!f.active || f.actor.dead) continue;
-      this.obey(f.actor, f.brain.update(dt, this.time, f.actor, hero, this.tokens));
+      this.combat.obey(f.actor, f.brain.update(dt, this.time, f.actor, hero, this.tokens), hero);
     }
     if (this.phase === "boss" && !this.boss.dead) {
       const brain = this.boss === this.kage ? this.bossBrain : this.captainBrain;
-      this.obey(this.boss, brain.update(dt, this.time, this.boss, hero));
+      this.combat.obey(this.boss, brain.update(dt, this.time, this.boss, hero), hero);
     }
-  }
-
-  private obey(me: Actor, o: Orders) {
-    if (me.busy || me.down || me.juggled) return;
-    const hero = this.hero;
-    if (o.dash) this.startMove(me, null, undefined, o.dash);
-    else if (o.slam) this.startMove(me, hero, me.kind === "boss" ? KAGE_MOVES.slam : BRUTE_SLAM);
-    else if (o.attack) {
-      if (me.kind === "shade") this.startMove(me, hero, SHADE_CUT);
-      else {
-        const step = this.time < me.comboUntil ? me.comboStep : 0;
-        const def = KAGE_COMBO[step];
-        this.startMove(me, hero, def);
-        me.comboStep = (step + 1) % KAGE_COMBO.length;
-        me.comboUntil = this.time + def.keys[def.keys.length - 1].t + 0.4;
-      }
-    }
-  }
-
-  /** Start a move and its effects, placed where the fighter will be at the impact. */
-  private startMove(me: Actor, foe: Actor | null, def?: MoveDef, dashDir?: THREE.Vector3) {
-    me.guardHeld = false;
-    if (!def) {
-      const act = me.dash(dashDir!);
-      this.fx.fire(me.spec.who === "sora" ? "dashSora" : "dashKage", this.time, me.pos, me.yaw, act.def.impact);
-      this.sound("dash");
-      return;
-    }
-    const act = me.play(def, foe, dashDir);
-    if (def.impact !== undefined) {
-      const s = act.track.at(def.impact);
-      const c = Math.cos((act.startYaw * Math.PI) / 180) * me.scale;
-      const sn = Math.sin((act.startYaw * Math.PI) / 180) * me.scale;
-      V.set(act.startPos.x + c * s.at[0] - sn * s.at[1] + act.lunge.x, act.startPos.y + sn * s.at[0] + c * s.at[1] + act.lunge.y, 0);
-      if (def.swing) this.fx.fire(def.swing, this.time, V, act.startYaw + s.yaw, def.impact);
-      for (const clip of def.also ?? []) this.fx.fire(clip, this.time, clip === "dashSora" ? me.pos : V, act.startYaw, clip === "leap" ? 0.3 : def.impact);
-    }
-    this.sound(def.name === "slam" || def.name === "bruteSlam" ? "slam" : def.name === "pierce" ? "dash" : "swing");
-  }
-
-  /** Land `me`'s blows that are due. */
-  private resolve(me: Actor) {
-    const a = me.action;
-    if (!a?.def.hits || a.def.impact === undefined || me.dead) return;
-    a.def.hits.forEach((hit, i) => {
-      if (a.done.has(i) || a.t < a.def.impact! + (hit.delay ?? 0)) return;
-      a.done.add(i);
-      if (a.def.name === "pierce") this.ultImpact(me);
-      const targets = me === this.hero ? this.targets() : [this.hero];
-      let first = true;
-      for (const t of targets) {
-        if (a.struck.has(t)) continue;
-        if (this.strike(me, t, hit, first)) {
-          a.struck.add(t);
-          first = false;
-        }
-      }
-    });
   }
 
   private targets() {
@@ -659,85 +510,6 @@ export class Adventure {
     for (const f of this.foes) if (f.active && f.actor.alive) out.push(f.actor);
     if (!this.boss.dead && this.boss.alive && (this.phase === "boss" || this.phase === "bossIntro")) out.push(this.boss);
     return out;
-  }
-
-  /** One blow on one fighter. Returns whether it connected. */
-  private strike(me: Actor, foe: Actor, hit: HitSpec, fxOn: boolean) {
-    if (foe.down || foe.invulnerable || foe.dead) return false;
-    const to = V.subVectors(foe.pos, me.pos).setZ(0);
-    const dist = to.length() - foe.radius * 0.5;
-    const reach = hit.range * Math.max(me.scale, 0.85);
-    if (dist > reach || (hit.min !== undefined && dist < hit.min)) return false;
-    // height: a grounded sweep misses someone high in a jump
-    if (Math.abs(foe.pos.z - me.pos.z) > 1.8 + (hit.kind === "launch" ? 1 : 0)) return false;
-    const ang = (Math.acos(THREE.MathUtils.clamp(me.forward.dot(to.normalize()), -1, 1)) * 180) / Math.PI;
-    if (ang > hit.arc) return false;
-    const faceYaw = yawOf(V2.subVectors(me.pos, foe.pos));
-    const facing = Math.abs(((foe.yaw - faceYaw + 540) % 360) - 180) < 100;
-    const heroHit = foe === this.hero;
-    // bigger fighters hit harder
-    const damage = hit.damage * (me.kind === "captain" ? 1.25 : 1);
-
-    if (foe.guardHeld && facing && !foe.airborne) {
-      if (this.time - foe.guardSince < PARRY_WINDOW && hit.delay === undefined) {
-        // parried: the clash, full screen
-        const s = heroHit ? foe : me;
-        const k = heroHit ? me : foe;
-        const mid = V.copy(s.pos).lerp(k.pos, 0.5);
-        this.fx.fire("clash", this.time, mid, yawOf(V2.subVectors(k.pos, s.pos)));
-        me.play(STAGGER, foe);
-        foe.play(PARRY, me);
-        this.hitStop(4, 0.18);
-        this.sound("clash");
-        this.popAt(foe, 0, "parry");
-        if (heroHit) this.gainEnergy(15);
-        return true;
-      }
-      const chip = damage * 0.12;
-      foe.hp = Math.max(1, foe.hp - chip);
-      foe.play(BLOCKED, me);
-      if (fxOn) this.fx.fire(hit.clip, this.time, foe.pos, faceYaw);
-      this.hitStop(2, 0.05);
-      this.sound("block");
-      this.popAt(foe, chip, "block");
-      return true;
-    }
-
-    // a blow from behind, or on a fighter in the air, lands harder
-    const crit = !heroHit && (!facing || foe.airborne);
-    const dealt = damage * (crit ? 1.5 : 1);
-    foe.hp = Math.max(0, foe.hp - dealt);
-    foe.guardHeld = false;
-    this.popAt(foe, dealt, heroHit ? "hurt" : crit ? "crit" : "hit");
-    if (fxOn) this.fx.fire(hit.clip, this.time, foe.pos, faceYaw);
-    if (heroHit) {
-      this.stats.damage += dealt;
-      this.gainEnergy(3);
-      this.combo = 0;
-    } else {
-      this.combo++;
-      this.comboT = COMBO_WINDOW;
-      this.stats.maxCombo = Math.max(this.stats.maxCombo, this.combo);
-      this.gainEnergy(hit.gain ?? 5);
-    }
-    const heavyBody = foe.spec.heavy && hit.kind !== "heavy";
-    const bossy = foe.kind === "boss" || foe.kind === "captain";
-    if (hit.kind === "launch" && !heavyBody && !bossy) {
-      foe.launch(foe.hp <= 0 ? 8.5 : 7.2, me);
-      this.hitStop(2, 0.1);
-      this.sound("heavy");
-    } else if (hit.kind === "heavy" || (hit.kind === "launch" && !heavyBody)) {
-      foe.play(SKID, me);
-      if (heroHit) this.fx.fire("skid", this.time, foe.pos, faceYaw, 0.05);
-      this.hitStop(3, 0.14);
-      this.sound(hit.clip === "waveHit" ? "wave" : "heavy");
-    } else {
-      if (!heavyBody) foe.play(FLINCH, me);
-      this.hitStop(2, 0.08);
-      this.sound("hit");
-    }
-    if (foe.hp <= 0) this.knockOut(foe, me);
-    return true;
   }
 
   private knockOut(f: Actor, by: Actor) {
@@ -751,7 +523,7 @@ export class Adventure {
     }
     if (f === this.kage) {
       f.defeat(by);
-      this.slow = 0.6;
+      this.combat.slow = 0.6;
       this.setPhase("broken");
       this.say("FINISH HIM", "");
       return;
@@ -759,8 +531,8 @@ export class Adventure {
     if (f === this.captain) {
       // the general falls: slow motion, a scatter of energy, the stage is won
       f.defeat(by);
-      this.slow = 1.1;
-      this.stats.kos++;
+      this.combat.slow = 1.1;
+      this.combat.stats.kos++;
       this.orbs.spawn(f.pos, 10);
       this.barrier.seal(null);
       this.setPhase("clear");
@@ -768,12 +540,12 @@ export class Adventure {
       this.after(2.4, () => this.finishStage());
       return;
     }
-    this.stats.kos++;
+    this.combat.stats.kos++;
     f.defeat(by);
     this.orbs.spawn(f.pos, f.kind === "brute" ? 7 : 3);
     // the last of a wave falls slowly
     const left = this.foes.filter((x) => x.active && x.actor.alive).length + this.pending.length;
-    if (left === 0) this.slow = 0.45;
+    if (left === 0) this.combat.slow = 0.45;
   }
 
   /** The stage is won: tally it up. */
@@ -781,31 +553,13 @@ export class Adventure {
     this.hud.results = {
       stage: this.stageIndex,
       time: this.time,
-      maxCombo: this.stats.maxCombo,
-      kos: this.stats.kos,
-      damage: this.stats.damage,
-      rank: rankOf(this.time, this.stats.maxCombo, this.stats.damage),
+      maxCombo: this.combat.stats.maxCombo,
+      kos: this.combat.stats.kos,
+      damage: this.combat.stats.damage,
+      rank: rankOf(this.time, this.combat.stats.maxCombo, this.combat.stats.damage),
     };
     this.setPhase("results");
     this.say("");
-  }
-
-  /** The ultimate lands: the ground shatters under everyone near. */
-  private ultImpact(me: Actor) {
-    this.fx.fire("pierce", this.time, me.pos, me.yaw);
-    this.ultUntil = this.time + 6;
-    this.hitStop(4, 0.35);
-    this.sound("clash");
-    this.sound("slam");
-  }
-
-  private hitStop(frames24: number, shake: number) {
-    this.freeze = Math.max(this.freeze, frames24 / 24);
-    this.camera.shake(shake);
-  }
-
-  private gainEnergy(n: number) {
-    this.energy = Math.min(ENERGY_MAX, this.energy + n);
   }
 
   private nearestFoe(within: number) {
@@ -876,11 +630,6 @@ export class Adventure {
     out.x = (V2.x + 1) / 2;
     out.y = (1 - V2.y) / 2;
     return out;
-  }
-
-  private popAt(a: Actor, value: number, kind: Pop["kind"]) {
-    const s = this.project(V.set(a.pos.x, a.pos.y, a.pos.z + 1.35 * a.scale), { x: 0, y: 0 });
-    if (s) this.events.pop?.({ id: this.popId++, x: s.x, y: s.y, value: Math.round(value), kind });
   }
 
   /** Health bars over the shadows (the bosses have theirs up top). */
@@ -973,7 +722,7 @@ export class Adventure {
     if (this.finaleStart < 0) this.finaleStart = this.phaseT;
     const frame = Math.min(FINALE_FROM + (this.phaseT - this.finaleStart) * 24, FINALE_TO);
     if (frame >= FINALE_TO && this.phase === "finisher") {
-      this.stats.kos++;
+      this.combat.stats.kos++;
       this.finishStage();
       this.sync();
     }
@@ -1037,12 +786,12 @@ export class Adventure {
     h.maxHp = this.hero.maxHp;
     const showBoss = this.phase === "bossIntro" || this.phase === "boss" || this.phase === "broken" || (this.phase === "windup" && this.boss === this.kage);
     h.boss = showBoss ? { hp: Math.ceil(this.boss.hp), max: this.boss.maxHp, name: st.bossName, title: st.bossTitle } : null;
-    h.combo = this.combo;
+    h.combo = this.combat.combo;
     const next = st.arenas.findIndex((_, k) => !this.cleared.has(k));
     h.go = this.phase === "explore" && next >= 0 && this.phaseT > 1.2;
     const a = this.arena >= 0 ? st.arenas[this.arena] : null;
     h.wave = this.phase === "ambush" && a ? `WAVE ${this.wave + 1}/${a.waves.length}` : "";
-    h.ultReady = this.energy >= ENERGY_MAX;
+    h.ultReady = this.combat.energy >= ENERGY_MAX;
     h.finishable = this.phase === "broken";
     h.marks = st.arenas.map((ar) => (ar.trigger - st.start) / (st.end - 1 - st.start));
     // transient banners clear themselves

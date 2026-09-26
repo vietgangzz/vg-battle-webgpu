@@ -26,9 +26,8 @@ export function PressButton({ label, onPress, primary, small }: { label: string;
 }
 
 /** The title screen, over the film's standoff. */
-export function MainMenu({ save, onPlay, onStages, onSettings }: { save: Save; onPlay: () => void; onStages: () => void; onSettings: () => void }) {
+export function MainMenu({ onExplore, onStages, onSettings }: { onExplore: () => void; onStages: () => void; onSettings: () => void }) {
   const insets = useSafeAreaInsets();
-  const next = STAGES[Math.min(save.unlocked, STAGES.length - 1)];
   return (
     <Animated.View entering={FadeIn.duration(600)} exiting={FadeOut.duration(250)} style={StyleSheet.absoluteFill}>
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
@@ -48,9 +47,9 @@ export function MainMenu({ save, onPlay, onStages, onSettings }: { save: Save; o
           <Text style={styles.tagline}>HÀNH TRÌNH XUYÊN VIỆT</Text>
         </Animated.View>
         <Animated.View entering={FadeInDown.delay(450).duration(500)} style={styles.menuButtons}>
-          <PressButton label={save.unlocked > 0 ? `CONTINUE · ${next.name}` : "PLAY"} onPress={onPlay} primary />
+          <PressButton label="KHÁM PHÁ NINH BÌNH" onPress={onExplore} primary />
           <View style={styles.row}>
-            <PressButton label="STAGES" onPress={onStages} />
+            <PressButton label="CHALLENGE" onPress={onStages} />
             <PressButton label="SETTINGS" onPress={onSettings} />
           </View>
         </Animated.View>

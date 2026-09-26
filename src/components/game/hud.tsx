@@ -78,7 +78,7 @@ export function Hud({
 }
 
 // ---------------------------------------------------------------- over the shadows' heads
-function Markers({ bars }: { bars: SharedValue<number[]> }) {
+export function Markers({ bars }: { bars: SharedValue<number[]> }) {
   return (
     <View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}>
       {Array.from({ length: BAR_SLOTS }, (_, i) => (
@@ -102,7 +102,7 @@ function Marker({ slot, bars }: { slot: number; bars: SharedValue<number[]> }) {
   );
 }
 
-function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => void }) {
+export function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => void }) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = withTiming(1, { duration: pop.kind === "crit" ? 900 : 700, easing: Easing.out(Easing.cubic) });
@@ -124,7 +124,7 @@ function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => void }) 
 }
 
 /** Red creeping in from the edges while SORA is near the end. */
-function LowHealth({ low }: { low: boolean }) {
+export function LowHealth({ low }: { low: boolean }) {
   const p = useSharedValue(0);
   useEffect(() => {
     p.value = low ? withRepeat(withSequence(withTiming(1, { duration: 520 }), withTiming(0.35, { duration: 520 })), -1) : withTiming(0, { duration: 300 });
@@ -172,7 +172,7 @@ function Hint({ text, bottom }: { text: string; bottom: number }) {
 }
 
 // ---------------------------------------------------------------- SORA
-function PlayerPanel({ hp, max, energy, ready, top, left }: { hp: number; max: number; energy: SharedValue<number>; ready: boolean; top: number; left: number }) {
+export function PlayerPanel({ hp, max, energy, ready, top, left }: { hp: number; max: number; energy: SharedValue<number>; ready: boolean; top: number; left: number }) {
   const frac = Math.max(0, hp / max);
   const hurt = useSharedValue(0);
   const last = useRef(hp);
@@ -250,7 +250,7 @@ function SlantBar({ frac, color, width, height, flip }: { frac: number; color: s
 }
 
 // ---------------------------------------------------------------- KAGE
-function BossBar({ hp, max, name, title, top }: { hp: number; max: number; name: string; title: string; top: number }) {
+export function BossBar({ hp, max, name, title, top }: { hp: number; max: number; name: string; title: string; top: number }) {
   const enter = useSharedValue(0);
   useEffect(() => {
     enter.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
@@ -282,7 +282,7 @@ function WavePill({ text, top }: { text: string; top: number }) {
 }
 
 // ---------------------------------------------------------------- combo
-function Combo({ count, timer }: { count: number; timer: SharedValue<number> }) {
+export function Combo({ count, timer }: { count: number; timer: SharedValue<number> }) {
   const pop = useSharedValue(0);
   useEffect(() => {
     if (count >= 2) {
@@ -307,7 +307,7 @@ function Combo({ count, timer }: { count: number; timer: SharedValue<number> }) 
 }
 
 // ---------------------------------------------------------------- words
-function Banner({ text, sub }: { text: string; sub: string }) {
+export function Banner({ text, sub }: { text: string; sub: string }) {
   const slide = useSharedValue(0);
   const underline = useSharedValue(0);
   const shown = useRef("");

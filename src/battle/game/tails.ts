@@ -100,7 +100,7 @@ export class Tails {
   }
 
   /** Step the cloth by `dt` seconds of story time (0 = frozen in a hit-stop), `t` = story clock. */
-  step(body: THREE.Matrix4, dt: number, t: number, substeps = 2) {
+  step(body: THREE.Matrix4, dt: number, t: number, floor = 0, substeps = 2) {
     const chest = V.set(0, 0, 0.65).applyMatrix4(body).clone();
     const head = V.set(0, 0, 1.12).applyMatrix4(body).clone();
     for (const s of this.strands) {
@@ -168,7 +168,7 @@ export class Tails {
           for (let i = 2; i < N; i++) {
             push(x[i], chest, 0.62);
             push(x[i], head, 0.45);
-            if (x[i].z < 0.03) x[i].z = 0.03;
+            if (x[i].z < floor + 0.03) x[i].z = floor + 0.03;
           }
         }
       }
