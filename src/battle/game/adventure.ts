@@ -303,11 +303,10 @@ export class Adventure {
     const wall = Math.min(s - this.last, 0.1);
     this.last = s;
     if (this.phase === "finisher" || (this.phase === "results" && this.finaleStart >= 0)) return this.drawFinale(wall, now);
-    this.acc += wall;
-    while (this.acc >= DT) {
-      this.acc -= DT;
-      this.step();
-    }
+    // as many 60 Hz steps as frames have passed since the last one shown (one, at a steady 60)
+    const n = this.player.pace(now);
+    if (n === 0) return false;
+    for (let i = 0; i < n; i++) this.step();
     return this.player.renderPosed(() => this.pose(), now);
   }
 

@@ -47,6 +47,8 @@ const MAX_SCALE = 1.0;
 export class FilmPlayer {
   private framing: Framing = { aspect: 16 / 9, safeAspect: 4 / 3 };
   private scale = MAX_SCALE;
+  /** resolution held (see lockScale) */
+  private locked = false;
   private avgInterval = 0;
   private lastRender = 0;
   private settle = 0;
@@ -197,9 +199,33 @@ export class FilmPlayer {
     this.context.present();
   }
 
+  /**
+   * For a game stepping at a fixed 60 Hz: how many steps to take before drawing
+   * on this display callback, or 0 to skip it. Tying the steps to the frames
+   * actually shown (one per frame at a steady 60) keeps motion even; stepping
+   * off the wall clock instead leaves some frames with no step and others with
+   * two, and everything judders (worst on 120 Hz screens).
+   */
+  pace(now: number) {
+    if (this.lastRender && now - this.lastRender < this.budget * 0.9) return 0;
+    const since = this.lastRender ? now - this.lastRender : this.budget;
+    return Math.min(4, Math.max(1, Math.round(since / this.budget)));
+  }
+
+  /** Hold the scene passes at full resolution (the game: its cost is the CPU's, and a softer picture would not buy frames back). */
+  lockScale(scale = 1) {
+    this.locked = true;
+    this.scale = scale;
+    this.post.setRenderScale(scale);
+  }
+
   /** Dynamic resolution: step the scene passes down when frames run late, back up when there is headroom. */
   private adapt(interval: number) {
     if (!this.lastRender || interval > 250) return;
+    if (this.locked) {
+      this.avgInterval = this.avgInterval ? this.avgInterval * 0.9 + interval * 0.1 : interval;
+      return;
+    }
     this.avgInterval = this.avgInterval ? this.avgInterval * 0.9 + interval * 0.1 : interval;
     if (--this.settle > 0) return;
     let next = this.scale;

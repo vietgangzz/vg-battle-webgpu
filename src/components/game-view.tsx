@@ -68,7 +68,7 @@ const HAPTIC: Partial<Record<SoundName, () => void>> = {
  */
 const gamePixelRatio = () => Math.min(PixelRatio.get(), 2);
 
-export function GameView() {
+export function GameView({ autostart = false }: { autostart?: boolean }) {
   useKeepAwake();
   const [fontsLoaded] = useFonts({ ManropeSemiBold: require("../../assets/fonts/Manrope-SemiBold.ttf") });
   const ref = useRef<CanvasRef>(null);
@@ -189,6 +189,14 @@ export function GameView() {
     [soundtrack, cut],
   );
 
+  // opened with ?explore=1: into the valley as soon as it is ready
+  const autostarted = useRef(false);
+  useEffect(() => {
+    if (!autostart || autostarted.current || !roam || view !== "menu") return;
+    autostarted.current = true;
+    startExplore(true);
+  }, [autostart, roam, view, startExplore]);
+
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     size.current = { width, height };
@@ -207,6 +215,8 @@ export function GameView() {
         if (!context) return;
         const { width, height } = size.current.width ? size.current : { width: 1, height: 1 };
         const p = await FilmPlayer.create(context, { width, height, pixelRatio: gamePixelRatio() }, { onProgress: setStage });
+        // the game draws at full resolution always (its limit is the CPU's; a softer picture buys nothing)
+        p.lockScale(1);
         if (cancelled) {
           p.dispose();
           return;

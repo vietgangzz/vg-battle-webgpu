@@ -15,12 +15,12 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Path } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from "react-native-svg";
 
 import { SKILL_COOLDOWN } from "@/battle/game/combat";
 
-import { BladeIcon, BloomIcon, DashIcon, GuardIcon, JumpIcon, SprintIcon, StreakIcon, WaveIcon } from "./icons";
-import { INK, IVORY, LIME, ORANGE, UI_FONT } from "./theme";
+import { CrescentGlyph, type GlyphProps, GustGlyph, LotusGlyph, RiseGlyph, ShieldGlyph, SlashGlyph, SprintGlyph, StreakGlyph } from "./skill-icons";
+import { CRIMSON, INK, IVORY, LIME, UI_FONT } from "./theme";
 
 const ACircle = Animated.createAnimatedComponent(Circle);
 const AnimatedText = Animated.createAnimatedComponent(TextInput);
@@ -53,27 +53,27 @@ interface Button {
   r: number;
 }
 
-/** a point on a circle round the attack button; angles in degrees, 180 = left, 270 = straight up */
-const at = (deg: number, dist: number) => ({ dx: Math.cos((deg * Math.PI) / 180) * dist, dy: Math.sin((deg * Math.PI) / 180) * dist });
 
 /**
- * The usual action-game thumb layout: the big attack button in the corner, the
- * three quick moves on an even arc round it (dash, jump, skill), the
- * ultimate a reach further up-left, the guard a reach further left.
+ * The thumb cluster, laid out like the big mobile action games: the attack
+ * in the corner; sprint just above it; jump and dash on a close arc; the
+ * skill, the kiếm khí and the ultimate a reach further up-left; the guard
+ * furthest left. Everything stays in the lower part of the screen, clear of
+ * the map in the top corner. Offsets (points) from the attack button's centre.
  */
 const CLUSTER: Button[] = [
   { id: "attack", dx: 0, dy: 0, r: 40 },
-  { id: "dash", ...at(182, 90), r: 27 },
-  { id: "jump", ...at(226, 90), r: 27 },
-  { id: "skill", ...at(270, 90), r: 30 },
-  { id: "ult", ...at(236, 168), r: 33 },
-  { id: "guard", ...at(186, 164), r: 25 },
-  { id: "shoot", ...at(211, 166), r: 28 },
-  { id: "sprint", ...at(262, 168), r: 28 },
+  { id: "sprint", dx: 30, dy: -88, r: 25 },
+  { id: "jump", dx: -60, dy: -72, r: 27 },
+  { id: "dash", dx: -96, dy: 8, r: 27 },
+  { id: "skill", dx: -152, dy: -38, r: 31 },
+  { id: "shoot", dx: -118, dy: -118, r: 29 },
+  { id: "ult", dx: -194, dy: -108, r: 34 },
+  { id: "guard", dx: -182, dy: 26, r: 25 },
 ];
-const FINISH: Button = { id: "finish", ...at(232, 250), r: 48 };
+const FINISH: Button = { id: "finish", dx: -120, dy: -210, r: 46 };
 /** attack button centre from the bottom-right corner */
-const ANCHOR = { right: 78, bottom: 70 };
+const ANCHOR = { right: 72, bottom: 66 };
 
 const STICK_R = 58;
 const KNOB_R = 24;
@@ -367,22 +367,30 @@ function arc(cx: number, cy: number, r: number, a0: number, a1: number) {
 }
 
 // ---------------------------------------------------------------- the buttons
-const ICONS: Record<ButtonId, (color: string, r: number) => ReactNode> = {
-  attack: (c, r) => <BladeIcon size={r * 1.05} color={c} />,
-  jump: (c, r) => <JumpIcon size={r * 1.0} color={c} />,
-  dash: (c, r) => <DashIcon size={r * 1.0} color={c} />,
-  guard: (c, r) => <GuardIcon size={r * 0.95} color={c} />,
-  skill: (c, r) => <StreakIcon size={r * 0.95} color={c} />,
-  ult: (c, r) => <BloomIcon size={r * 1.25} color={c} />,
-  finish: (c, r) => <BloomIcon size={r * 0.95} color={c} />,
-  shoot: (c, r) => <WaveIcon size={r * 1.0} color={c} />,
-  sprint: (c, r) => <SprintIcon size={r * 0.95} color={c} />,
+/**
+ * Each action's element: its colour runs through the rim, the inner glow,
+ * the glyph and its charge or cooldown. The blade is the brand's lime; the
+ * skills each have their own light.
+ */
+const ELEMENT: Record<ButtonId, { color: string; glyph: (p: GlyphProps) => ReactNode; scale: number }> = {
+  attack: { color: LIME, glyph: (p) => <SlashGlyph {...p} />, scale: 1.05 },
+  sprint: { color: "#FFB45A", glyph: (p) => <SprintGlyph {...p} />, scale: 0.95 },
+  jump: { color: IVORY, glyph: (p) => <RiseGlyph {...p} />, scale: 0.95 },
+  dash: { color: IVORY, glyph: (p) => <GustGlyph {...p} />, scale: 0.95 },
+  skill: { color: "#3CE8B0", glyph: (p) => <StreakGlyph {...p} />, scale: 1 },
+  shoot: { color: "#58D6FF", glyph: (p) => <CrescentGlyph {...p} />, scale: 1 },
+  ult: { color: "#FFC94A", glyph: (p) => <LotusGlyph {...p} />, scale: 1.1 },
+  guard: { color: "#7FB8FF", glyph: (p) => <ShieldGlyph {...p} />, scale: 0.95 },
+  finish: { color: LIME, glyph: (p) => <LotusGlyph {...p} />, scale: 1 },
 };
+const DEEP = "#0A0F16";
 
 /**
- * One round glass button: a dark translucent disc, a thin ivory rim, a white
- * line icon. The skill carries its cooldown as a shadow sweep and a number;
- * the ultimate its charge as a lime arc, and turns solid lime when ready.
+ * One action button: a dark glass disc lit from inside by its element (a
+ * soft inner glow and a bright rim), a gradient glyph with a halo, and
+ * whatever it carries: the skill's cooldown sweep and seconds, the ultimate's
+ * gold charge ring (then a burst of light when ready), the sprint's stamina.
+ * Pressed, it sinks and flares; ready specials wear slowly turning arcs.
  */
 function ActionButton({
   b,
@@ -401,32 +409,41 @@ function ActionButton({
   winded?: SharedValue<number>;
 }) {
   const r = b.r;
-  const PAD = 10;
+  const PAD = 14;
   const S = r * 2 + PAD * 2;
   const c = S / 2;
   const id = b.id;
-  // the skill and the kiếm khí both wear their cooldown on the face (only the skill counts seconds)
+  const el = ELEMENT[id];
+  const color = el.color;
   const isSkill = id === "skill" || id === "shoot";
   const counts = id === "skill";
   const isUlt = id === "ult";
+  const isSprint = id === "sprint";
   const finish = id === "finish";
   const solid = finish || (isUlt && ultReady);
+  const gid = `b${id}`;
 
   const press = useSharedValue(0);
   const pulse = useSharedValue(0);
+  const spin = useSharedValue(0);
   const ping = useSharedValue(0);
 
   useEffect(() => {
     press.value = withSpring(down ? 1 : 0, { damping: 14, stiffness: 520 });
   }, [down, press]);
   useEffect(() => {
-    if (solid) pulse.value = withRepeat(withSequence(withTiming(1, { duration: 800, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 800, easing: Easing.inOut(Easing.sin) })), -1);
-    else {
+    if (solid) {
+      pulse.value = withRepeat(withSequence(withTiming(1, { duration: 700, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 700, easing: Easing.inOut(Easing.sin) })), -1);
+    } else {
       cancelAnimation(pulse);
       pulse.value = withTiming(0, { duration: 200 });
     }
   }, [solid, pulse]);
-  // the moment the skill comes back, it rings once
+  useEffect(() => {
+    // the specials' arcs turn slowly, always
+    if (isSkill || isUlt || finish) spin.value = withRepeat(withTiming(1, { duration: 9000, easing: Easing.linear }), -1);
+  }, [isSkill, isUlt, finish, spin]);
+  // the moment a skill comes back, it rings once
   useAnimatedReaction(
     () => (isSkill ? skill.value > 0 : false),
     (cooling, was) => {
@@ -435,45 +452,77 @@ function ActionButton({
   );
 
   const body = useAnimatedStyle(() => ({ transform: [{ scale: 1 - 0.08 * press.value }] }));
-  const lit = useAnimatedStyle(() => ({ opacity: press.value }));
-  const glow = useAnimatedStyle(() => ({ opacity: 0.25 + 0.45 * pulse.value, transform: [{ scale: 1 + 0.1 * pulse.value }] }));
-  const pingStyle = useAnimatedStyle(() => ({ opacity: (1 - ping.value) * (ping.value > 0 ? 1 : 0), transform: [{ scale: 1 + 0.35 * ping.value }] }));
+  const flare = useAnimatedStyle(() => ({ opacity: press.value * 0.4 }));
+  const glow = useAnimatedStyle(() => ({ opacity: (solid ? 0.45 : 0) + 0.45 * pulse.value, transform: [{ scale: 1 + 0.12 * pulse.value }] }));
+  const arcs = useAnimatedStyle(() => ({
+    opacity: isSkill && skill.value > 0 ? 0.15 : 0.9,
+    transform: [{ rotate: `${spin.value * 360}deg` }],
+  }));
+  const pingStyle = useAnimatedStyle(() => ({ opacity: (1 - ping.value) * (ping.value > 0 ? 1 : 0), transform: [{ scale: 1 + 0.4 * ping.value }] }));
 
   // skill cooldown: a shadow pie over the face, and the seconds left
   const pieR = r / 2;
   const pieC = 2 * Math.PI * pieR;
   const pie = useAnimatedProps(() => ({ strokeDashoffset: pieC * (1 - skill.value) }));
-  const iconStyle = useAnimatedStyle(() => ({ opacity: isSkill && skill.value > 0 ? 0.3 : 1 }));
+  const iconStyle = useAnimatedStyle(() => ({ opacity: isSkill && skill.value > 0 ? 0.35 : 1 }));
   const seconds = useAnimatedProps(() => {
     const t = skill.value * SKILL_COOLDOWN;
     return { text: t > 0 ? (t < 1 ? t.toFixed(1) : String(Math.ceil(t))) : "" } as never;
   });
   const secondsStyle = useAnimatedStyle(() => ({ opacity: isSkill && skill.value > 0 ? 1 : 0 }));
 
-  // ultimate charge: a lime arc round the rim
-  const ring = r + 3.5;
+  // the ultimate's charge and the sprint's stamina, as rings round the rim
+  const ring = r + 4.5;
   const ringC = 2 * Math.PI * ring;
   const charge = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value) }));
-  // the sprint's stamina: lime while there is breath, orange while she catches it
-  const isSprint = id === "sprint";
   const breath = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value), strokeOpacity: winded && winded.value > 0 ? 0 : 1 }));
   const gasp = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value), strokeOpacity: winded && winded.value > 0 ? 1 : 0 }));
 
-  const iconColor = solid ? INK : IVORY;
+  const glyphSize = r * 1.28 * el.scale;
 
   return (
     <View style={{ position: "absolute", left: b.x - c, top: b.y - c, width: S, height: S }}>
-      {solid && (
-        <Animated.View style={[StyleSheet.absoluteFill, glow]}>
-          <Svg width={S} height={S}>
-            <Circle cx={c} cy={c} r={r + 6} fill={LIME} opacity={0.35} />
-          </Svg>
-        </Animated.View>
-      )}
+      {/* the burst of light round a ready ultimate / the finisher */}
+      <Animated.View style={[StyleSheet.absoluteFill, glow]}>
+        <Svg width={S} height={S}>
+          <Defs>
+            <RadialGradient id={`${gid}burst`} cx="50%" cy="50%" r="50%">
+              <Stop offset={String((r - 4) / c)} stopColor={color} stopOpacity={0.9} />
+              <Stop offset="1" stopColor={color} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={c} cy={c} r={c} fill={`url(#${gid}burst)`} />
+        </Svg>
+      </Animated.View>
       <Animated.View style={[StyleSheet.absoluteFill, body]}>
         <Svg width={S} height={S}>
-          <Circle cx={c} cy={c} r={r} fill={solid ? LIME : "rgba(10,12,14,0.4)"} stroke={solid ? LIME : IVORY} strokeOpacity={solid ? 1 : 0.6} strokeWidth={1.5} />
-          {id === "attack" && <Circle cx={c} cy={c} r={r - 6} fill="none" stroke={IVORY} strokeOpacity={0.16} strokeWidth={1} />}
+          <Defs>
+            <RadialGradient id={`${gid}face`} cx="50%" cy="38%" r="65%">
+              <Stop offset="0" stopColor={solid ? "#FFFFFF" : "#1C2733"} stopOpacity={solid ? 1 : 0.82} />
+              <Stop offset="0.7" stopColor={solid ? color : DEEP} stopOpacity={solid ? 1 : 0.8} />
+              <Stop offset="1" stopColor={solid ? color : DEEP} stopOpacity={solid ? 1 : 0.9} />
+            </RadialGradient>
+            <RadialGradient id={`${gid}inner`} cx="50%" cy="50%" r="50%">
+              <Stop offset="0.62" stopColor={color} stopOpacity={0} />
+              <Stop offset="0.9" stopColor={color} stopOpacity={solid ? 0 : 0.34} />
+              <Stop offset="1" stopColor={color} stopOpacity={solid ? 0 : 0.55} />
+            </RadialGradient>
+            <RadialGradient id={`${gid}halo`} cx="50%" cy="50%" r="50%">
+              <Stop offset="0" stopColor={color} stopOpacity={solid ? 0 : 0.4} />
+              <Stop offset="1" stopColor={color} stopOpacity={0} />
+            </RadialGradient>
+            <LinearGradient id={`${gid}gloss`} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#FFFFFF" stopOpacity={solid ? 0.55 : 0.2} />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          {/* shadow, face, the inner glow of the element, a bright rim */}
+          <Circle cx={c} cy={c + 2.5} r={r + 1} fill="#000" opacity={0.28} />
+          <Circle cx={c} cy={c} r={r} fill={`url(#${gid}face)`} />
+          <Circle cx={c} cy={c} r={r} fill={`url(#${gid}inner)`} />
+          <Circle cx={c} cy={c} r={r * 0.62} fill={`url(#${gid}halo)`} />
+          <Circle cx={c} cy={c} r={r - 0.8} fill="none" stroke={color} strokeOpacity={solid ? 1 : 0.85} strokeWidth={1.6} />
+          <Circle cx={c} cy={c} r={r - 4} fill="none" stroke="#FFFFFF" strokeOpacity={0.08} strokeWidth={1} />
           {isSkill && (
             <ACircle
               cx={c}
@@ -481,23 +530,39 @@ function ActionButton({
               r={pieR}
               fill="none"
               stroke="#000"
-              strokeOpacity={0.5}
+              strokeOpacity={0.6}
               strokeWidth={r}
               strokeDasharray={`${pieC} ${pieC}`}
               animatedProps={pie}
               transform={`rotate(-90 ${c} ${c})`}
             />
           )}
+          {(isUlt || isSprint) && (
+            <Circle cx={c} cy={c} r={ring} fill="none" stroke={color} strokeOpacity={isUlt && ultReady ? 0 : 0.16} strokeWidth={3} />
+          )}
+          {isUlt && !ultReady && (
+            <ACircle
+              cx={c}
+              cy={c}
+              r={ring}
+              fill="none"
+              stroke={color}
+              strokeWidth={3.4}
+              strokeLinecap="round"
+              strokeDasharray={`${ringC} ${ringC}`}
+              animatedProps={charge}
+              transform={`rotate(-90 ${c} ${c})`}
+            />
+          )}
           {isSprint && (
             <>
-              <Circle cx={c} cy={c} r={ring} fill="none" stroke={IVORY} strokeOpacity={0.14} strokeWidth={2.5} />
               <ACircle
                 cx={c}
                 cy={c}
                 r={ring}
                 fill="none"
-                stroke={LIME}
-                strokeWidth={2.5}
+                stroke={color}
+                strokeWidth={3}
                 strokeLinecap="round"
                 strokeDasharray={`${ringC} ${ringC}`}
                 animatedProps={breath}
@@ -508,8 +573,8 @@ function ActionButton({
                 cy={c}
                 r={ring}
                 fill="none"
-                stroke={ORANGE}
-                strokeWidth={2.5}
+                stroke={CRIMSON}
+                strokeWidth={3}
                 strokeLinecap="round"
                 strokeDasharray={`${ringC} ${ringC}`}
                 animatedProps={gasp}
@@ -517,30 +582,28 @@ function ActionButton({
               />
             </>
           )}
-          {isUlt && !ultReady && (
-            <>
-              <Circle cx={c} cy={c} r={ring} fill="none" stroke={IVORY} strokeOpacity={0.14} strokeWidth={2.5} />
-              <ACircle
-                cx={c}
-                cy={c}
-                r={ring}
-                fill="none"
-                stroke={LIME}
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                strokeDasharray={`${ringC} ${ringC}`}
-                animatedProps={charge}
-                transform={`rotate(-90 ${c} ${c})`}
-              />
-            </>
-          )}
+          {/* glass */}
+          <Path
+            d={`M ${c - r * 0.78} ${c - r * 0.08} A ${r} ${r} 0 0 1 ${c + r * 0.78} ${c - r * 0.08} Q ${c} ${c - r * 0.38} ${c - r * 0.78} ${c - r * 0.08} Z`}
+            fill={`url(#${gid}gloss)`}
+          />
         </Svg>
-        {/* pressed: the face fills with light */}
-        <Animated.View style={[styles.lit, { left: PAD, top: PAD, width: r * 2, height: r * 2, borderRadius: r }, solid && styles.litSolid, lit]} />
-        <Animated.View style={[StyleSheet.absoluteFill, styles.center, iconStyle]}>{ICONS[id](iconColor, r)}</Animated.View>
+        {/* the specials' tech arcs, turning */}
+        {(isSkill || isUlt || finish) && (
+          <Animated.View style={[StyleSheet.absoluteFill, arcs]}>
+            <Svg width={S} height={S}>
+              {[0, 1, 2].map((k) => (
+                <Path key={k} d={arc(c, c, r + 8, (k * 2 * Math.PI) / 3, (k * 2 * Math.PI) / 3 + 0.9)} stroke={color} strokeOpacity={0.75} strokeWidth={1.6} strokeLinecap="round" fill="none" />
+              ))}
+            </Svg>
+          </Animated.View>
+        )}
+        {/* pressed: the element flares from within */}
+        <Animated.View style={[styles.flare, { left: PAD, top: PAD, width: r * 2, height: r * 2, borderRadius: r, backgroundColor: color }, flare]} />
+        <Animated.View style={[StyleSheet.absoluteFill, styles.center, iconStyle]}>{el.glyph({ size: glyphSize, color, ink: solid ? DEEP : undefined })}</Animated.View>
         {counts && (
           <Animated.View style={[StyleSheet.absoluteFill, styles.center, secondsStyle]}>
-            <AnimatedText editable={false} underlineColorAndroid="transparent" style={[styles.seconds, { fontSize: r * 0.6 }]} animatedProps={seconds} defaultValue="" />
+            <AnimatedText editable={false} underlineColorAndroid="transparent" style={[styles.seconds, { fontSize: r * 0.62 }]} animatedProps={seconds} defaultValue="" />
           </Animated.View>
         )}
         {finish && <Text style={styles.finishText}>FINISH</Text>}
@@ -548,7 +611,7 @@ function ActionButton({
       {isSkill && (
         <Animated.View style={[StyleSheet.absoluteFill, pingStyle]}>
           <Svg width={S} height={S}>
-            <Circle cx={c} cy={c} r={r} fill="none" stroke={LIME} strokeWidth={2} />
+            <Circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth={2.4} />
           </Svg>
         </Animated.View>
       )}
@@ -559,8 +622,7 @@ function ActionButton({
 const styles = StyleSheet.create({
   knob: { position: "absolute", width: KNOB_R * 2, height: KNOB_R * 2 },
   center: { alignItems: "center", justifyContent: "center" },
-  lit: { position: "absolute", backgroundColor: "rgba(245,243,232,0.28)" },
-  litSolid: { backgroundColor: "rgba(255,255,255,0.4)" },
-  seconds: { color: IVORY, fontFamily: UI_FONT, textAlign: "center", padding: 0 },
-  finishText: { position: "absolute", alignSelf: "center", bottom: 12, color: INK, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 2 },
+  flare: { position: "absolute", opacity: 0 },
+  seconds: { color: IVORY, fontFamily: UI_FONT, textAlign: "center", padding: 0, textShadowColor: "rgba(0,0,0,0.8)", textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
+  finishText: { position: "absolute", alignSelf: "center", bottom: 10, color: DEEP, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 2 },
 });

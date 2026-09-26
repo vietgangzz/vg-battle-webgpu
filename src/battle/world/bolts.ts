@@ -104,6 +104,8 @@ interface Burst {
 
 const V = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 0, 1);
+const M = new THREE.Matrix4();
+const SIDE = new THREE.Vector3();
 
 export class Bolts {
   readonly group = new THREE.Group();
@@ -190,8 +192,10 @@ export class Bolts {
         const a = have + THREE.MathUtils.clamp(d, -TURN * dt, TURN * dt);
         b.dir.set(Math.cos(a), Math.sin(a), 0);
       }
-      b.trail.unshift(b.pos.clone());
-      if (b.trail.length > WAKE * 2 + 1) b.trail.length = WAKE * 2 + 1;
+      // the path behind, newest first (reusing the oldest point's vector)
+      const keep = WAKE * 2 + 1;
+      const p = b.trail.length >= keep ? b.trail.pop()!.copy(b.pos) : b.pos.clone();
+      b.trail.unshift(p);
       b.pos.addScaledVector(b.dir, SPEED * dt);
       // skim the ground: rise over a hill, settle into a hollow
       const gz = this.ground(b.pos.x, b.pos.y) + HEIGHT;
@@ -281,8 +285,8 @@ export class Bolts {
     const orient = (o: THREE.Object3D, p: THREE.Vector3, dir: THREE.Vector3) => {
       o.position.copy(p);
       // local +y along the flight, local z up (the crescent lies flat), then a slight roll for style
-      const m = new THREE.Matrix4().makeBasis(V.crossVectors(dir, UP).normalize(), dir, UP);
-      o.quaternion.setFromRotationMatrix(m);
+      M.makeBasis(SIDE.crossVectors(dir, UP).normalize(), dir, UP);
+      o.quaternion.setFromRotationMatrix(M);
       o.rotateY(0.35);
       o.visible = true;
     };

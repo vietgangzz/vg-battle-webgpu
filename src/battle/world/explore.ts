@@ -99,6 +99,9 @@ const CAMP_LEASH = 34;
 
 const V = new THREE.Vector3();
 const V2 = new THREE.Vector3();
+/** scratch for move(), kept apart from V/V2 (the actors' own updates use those through callbacks) */
+const MOVE_A = new THREE.Vector3();
+const MOVE_B = new THREE.Vector3();
 
 interface Foe {
   actor: Actor;
@@ -173,8 +176,6 @@ export class Explore {
   private checkpointYaw = 0;
   phase: ExplorePhase = "title";
   private phaseT = 0;
-  private acc = 0;
-  private last = -1;
   private clock = 0;
   private toastUntil = 0;
   private later: { at: number; run: () => void }[] = [];
@@ -362,6 +363,8 @@ export class Explore {
     }
     this.boss.remove();
     this.applyLevel();
+    // the valley's blows land with a shorter freeze than the stage roads' (it reads as lag on a fast screen)
+    this.combat.stopScale = 0.65;
     this.stamina = 100;
     this.winded = this.sprintHeld = false;
     if (fresh) {
@@ -386,8 +389,6 @@ export class Explore {
     this.hero.target = null;
     this.combat.reset(!fresh);
     this.camera.reset(this.hero);
-    this.acc = 0;
-    this.last = -1;
     this.later = [];
     this.hud.results = null;
     this.setPhase("title");
@@ -475,15 +476,10 @@ export class Explore {
 
   // ---------------------------------------------------------------- frame
   frame(now: number) {
-    const s = now / 1000;
-    if (this.last < 0) this.last = s;
-    const wall = Math.min(s - this.last, 0.1);
-    this.last = s;
-    this.acc += wall;
-    while (this.acc >= DT) {
-      this.acc -= DT;
-      this.step();
-    }
+    // as many 60 Hz steps as frames have passed since the last one shown (one, at a steady 60)
+    const n = this.player.pace(now);
+    if (n === 0) return false;
+    for (let i = 0; i < n; i++) this.step();
     return this.player.renderPosed(() => this.pose(), now);
   }
 
@@ -563,10 +559,10 @@ export class Explore {
 
   /** Update a fighter and keep it out of solid things and deep water (a move in progress is shifted with it). */
   private move(a: Actor, dt: number) {
-    const before = V.copy(a.pos).clone();
+    const before = MOVE_A.copy(a.pos);
     a.update(dt, this.time);
     if (a.dead) return;
-    const moved = V2.copy(a.pos).clone();
+    const moved = MOVE_B.copy(a.pos);
     this.world.collide(a.pos, a.radius, before);
     if (a.action) a.action.startPos.add(moved.subVectors(a.pos, moved).setZ(0));
   }

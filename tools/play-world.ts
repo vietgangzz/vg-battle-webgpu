@@ -40,6 +40,9 @@ const player = {
   fs,
   post,
   view: framing,
+  pace() {
+    return 1;
+  },
   renderPosed(pose: () => void) {
     tick();
     pose();

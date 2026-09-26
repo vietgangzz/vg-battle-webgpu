@@ -72,6 +72,8 @@ export class Combat {
   slow = 0;
   energy = 0;
   combo = 0;
+  /** how long hit-stops last relative to the film's (the host may shorten them) */
+  stopScale = 1;
   comboT = 0;
   skillCooldown = 0;
   shootCooldown = 0;
@@ -125,7 +127,7 @@ export class Combat {
   }
 
   hitStop(frames24: number, shake: number) {
-    this.freeze = Math.max(this.freeze, frames24 / 24);
+    this.freeze = Math.max(this.freeze, (frames24 / 24) * this.stopScale);
     this.host.shake(shake);
   }
 
