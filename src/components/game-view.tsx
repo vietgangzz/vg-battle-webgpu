@@ -90,6 +90,7 @@ export function GameView() {
   const [pad, setPad] = useState<Adventure | null>(null);
   const [roam, setRoam] = useState<{ game: Explore; manifest: WorldManifest } | null>(null);
   const [world, setWorld] = useState<ExploreHudState | null>(null);
+  const [fps, setFps] = useState(0);
   const map = useSharedValue<number[]>([0, 0, 0, 0]);
   const energy = useSharedValue(0);
   const skill = useSharedValue(0);
@@ -110,6 +111,13 @@ export function GameView() {
     settings.current = save.settings;
     heroSave.current = save.hero;
   }, [save.settings, save.hero]);
+
+  // the frame rate actually delivered, twice a second, for the HUD's corner
+  useEffect(() => {
+    if (view !== "explore") return;
+    const id = setInterval(() => setFps(player.current?.stats.fps ?? 0), 500);
+    return () => clearInterval(id);
+  }, [view]);
 
   const setMode = (m: Mode) => {
     mode.current = m;
@@ -157,7 +165,8 @@ export function GameView() {
         soundtrack.pause();
         setPaused(false);
         setPops([]);
-        if (mode.current === "explore") explore.current?.leave();
+        // leaving the valley, or its title-screen flight
+        if (mode.current === "explore" || mode.current === "menu") explore.current?.leave();
         game.current?.start(i, retry);
         setMode("game");
       });
@@ -270,10 +279,14 @@ export function GameView() {
           const c = clock.current;
           const s = now / 1000;
           if (mode.current === "menu") {
-            // the film's standoff, drifting back and forth behind the title
-            const [a, b] = MENU_FRAMES;
-            const f = a + pingpong((s - c.menuStart) * 10, b - a);
-            p.render(f / 24, now);
+            // the valley at golden hour behind the title (the film's standoff until it has loaded)
+            const ex = explore.current;
+            if (ex) ex.backdrop(now);
+            else {
+              const [a, b] = MENU_FRAMES;
+              const f = a + pingpong((s - c.menuStart) * 10, b - a);
+              p.render(f / 24, now);
+            }
           } else if (mode.current === "game" && !paused.current) {
             game.current?.frame(now);
           } else if (mode.current === "explore" && !paused.current) {
@@ -372,6 +385,7 @@ export function GameView() {
             pops={pops}
             onPopDone={popDone}
             onPause={() => setPaused(true)}
+            fps={fps}
           />
           {["roam", "camp", "boss", "bossIntro"].includes(world.phase) && !pausedView && (
             <Controls

@@ -44,10 +44,10 @@ export function MainMenu({ onExplore, onStages, onSettings }: { onExplore: () =>
         <Animated.View entering={FadeInDown.delay(150).duration(600)} style={styles.titleBlock}>
           <Image source={LOCKUP} style={styles.lockup} resizeMode="contain" />
           <Text style={styles.title}>LITTLE GIANT</Text>
-          <Text style={styles.tagline}>HÀNH TRÌNH XUYÊN VIỆT</Text>
+          <Text style={styles.tagline}>A JOURNEY ACROSS VIETNAM</Text>
         </Animated.View>
         <Animated.View entering={FadeInDown.delay(450).duration(500)} style={styles.menuButtons}>
-          <PressButton label="KHÁM PHÁ NINH BÌNH" onPress={onExplore} primary />
+          <PressButton label="EXPLORE NINH BÌNH" onPress={onExplore} primary />
           <View style={styles.row}>
             <PressButton label="CHALLENGE" onPress={onStages} />
             <PressButton label="SETTINGS" onPress={onSettings} />
@@ -68,8 +68,8 @@ export function StageSelect({ save, onPick, onBack }: { save: Save; onPick: (i: 
         <Pressable onPress={onBack} hitSlop={12} style={styles.back}>
           <Text style={styles.backText}>‹  BACK</Text>
         </Pressable>
-        <Text style={styles.selectTitle}>CHỌN MÀN</Text>
-        <Text style={styles.selectSub}>Từ Tràng An đến cõi bóng</Text>
+        <Text style={styles.selectTitle}>SELECT STAGE</Text>
+        <Text style={styles.selectSub}>From Tràng An to the Shadow Realm</Text>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards} decelerationRate="fast" snapToInterval={CARD_W + 16}>
         {STAGES.map((s, i) => (

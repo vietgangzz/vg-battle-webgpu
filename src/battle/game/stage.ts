@@ -163,23 +163,23 @@ const TRANG_AN: StageDef = {
     ["AMBUSH", "RIVER GATE"],
   ),
   boss: "captain",
-  bossName: "HẮC TƯỚNG",
+  bossName: "SHADOW GENERAL",
   bossTitle: "SHADOW GENERAL",
   card: { sky: ["#3A6FA0", "#C9DCD6"], layers: ["#8FB3A8", "#4F7F64", "#1F4A30"], sun: "#FFF1C9" },
   hints: [
-    { x: -56, text: "Kéo joystick để di chuyển" },
-    { x: -49, text: "Bấm SLASH liên tục: chém xoay · hất tung · đâm" },
-    { x: -34, text: "JUMP rồi SLASH để bổ từ trên xuống" },
-    { x: -30, text: "Giữ GUARD đúng lúc để phản đòn" },
-    { x: -24, text: "STREAK lao xuyên qua cả hàng địch" },
-    { x: -12, text: "Nhặt năng lượng · đầy vòng thì bấm ULT" },
+    { x: -56, text: "Drag the stick to move" },
+    { x: -49, text: "Tap SLASH in a row: spin · launch · thrust" },
+    { x: -34, text: "JUMP, then SLASH to strike from above" },
+    { x: -30, text: "Hold GUARD just in time to parry" },
+    { x: -24, text: "STREAK cuts through a whole line" },
+    { x: -12, text: "Gather energy · when the ring is full, press ULT" },
   ],
 };
 
 // ---------------------------------------------------------------- 2. Hạ Long
 const HA_LONG: StageDef = {
   id: "ha-long",
-  name: "VỊNH HẠ LONG",
+  name: "HẠ LONG BAY",
   region: "Quảng Ninh",
   blurb: "Sunset over the islets. The boardwalk through the floating village.",
   look: {
@@ -228,7 +228,7 @@ const HA_LONG: StageDef = {
     ["AMBUSH", "FLOATING VILLAGE"],
   ),
   boss: "captain",
-  bossName: "HẮC TƯỚNG",
+  bossName: "SHADOW GENERAL",
   bossTitle: "LORD OF THE TIDE",
   card: { sky: ["#1D2350", "#FF8A4C"], layers: ["#B5586A", "#6B3350", "#2A1830"], sun: "#FFD08A" },
 };
@@ -236,7 +236,7 @@ const HA_LONG: StageDef = {
 // ---------------------------------------------------------------- 3. Fansipan
 const FANSIPAN: StageDef = {
   id: "fansipan",
-  name: "TIÊN CẢNH FANSIPAN",
+  name: "FANSIPAN PEAKS",
   region: "Lào Cai",
   blurb: "The roof of Indochina. A stone path above the sea of clouds, at dawn.",
   look: {
@@ -284,7 +284,7 @@ const FANSIPAN: StageDef = {
     ["AMBUSH", "CLOUD GATE"],
   ),
   boss: "captain",
-  bossName: "HẮC TƯỚNG",
+  bossName: "SHADOW GENERAL",
   bossTitle: "KEEPER OF THE PEAK",
   card: { sky: ["#141E52", "#FFB38C"], layers: ["#9C8FB5", "#5E6395", "#2B3161"], sun: "#FFE3B8" },
 };
@@ -293,7 +293,7 @@ const FANSIPAN: StageDef = {
 const CRIMSON_PLAIN: StageDef = {
   id: "crimson-plain",
   name: "CRIMSON PLAIN",
-  region: "Cõi Bóng",
+  region: "The Shadow Realm",
   blurb: "The film's world. KAGE waits at the heart of the plain.",
   look: {
     film: true,

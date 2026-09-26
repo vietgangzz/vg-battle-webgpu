@@ -329,6 +329,7 @@ export class Explore {
   // ---------------------------------------------------------------- flow
   /** Enter the valley (fresh, or back at the last lit shrine after a fall). */
   start(fresh = true) {
+    this.backdropOn = false;
     const fs = this.player.fs;
     const m = this.world.data.manifest;
     this.world.group.visible = true;
@@ -391,11 +392,61 @@ export class Explore {
     this.hud.results = null;
     this.setPhase("title");
     this.say(fresh ? "NINH BÌNH" : "", fresh ? "TRÀNG AN · THE SHADOWED VALLEY" : "");
-    if (fresh) this.toast("Thắp các đền thờ · dẹp trại bóng · lên chùa gặp Hắc Tướng", 6);
+    if (fresh) this.toast("Light the shrines · clear the shadow camps · face the Shadow General at the pagoda", 6);
+  }
+
+  // ---------------------------------------------------------------- the title screen
+  private backdropOn = false;
+  /**
+   * The title screen's backdrop: the valley itself at golden hour, the camera
+   * drifting slowly round it, lanterns just lit. Draws a frame (at most the
+   * frame budget allows); returns whether it did.
+   */
+  backdrop(now: number) {
+    const fs = this.player.fs;
+    const player = this.player;
+    if (!this.backdropOn) {
+      this.backdropOn = true;
+      this.world.group.visible = true;
+      player.post.setLite(true);
+      fs.setExternal(this.externals, true);
+      this.hero.remove();
+      const kage = ["kage_body", "kage_eye0", "kage_eye1", "kage_band", "kage_hand_r", "kage_hand_l", "kage_blade", "kage_tail0", "kage_tail1", "kage_ghost1", "kage_ghost2", "kage_ghost3"];
+      fs.setExternal(kage, true);
+      for (const n of kage) fs.object(n).visible = false;
+      fs.blobSource = (out) => {
+        for (const o of out) o.set(0, 0, 0, 0);
+      };
+      this.fx.clear();
+      this.bolts.clear();
+      this.waterOrbs.clear();
+      for (const m of this.monsters) m.remove();
+      const look = 0.4;
+      applyLook(fs, mixLook(MORNING, DUSK, look));
+      LAMP.strength.node.value = 1 + 0.7 * look;
+      this.world.evening = look;
+      player.post.grade.saturation.value = 1.1;
+      player.post.grade.contrast.value = 1.1;
+      this.shownDusk = -1;
+    }
+    // from above the village, across the river to the pagoda hill and the towers behind it: a slow
+    // drift of the lens and a lazy pan back and forth, like a camera on a crane at golden hour
+    const t = now / 1000;
+    const eye = V.set(-100 + 9 * Math.sin(t * 0.045), -64 + 7 * Math.cos(t * 0.037), 30 + 3 * Math.sin(t * 0.05));
+    const at = V2.set(24 + 34 * Math.sin(t * 0.055), 46 + 10 * Math.cos(t * 0.043), 14);
+    eye.z = Math.max(eye.z, this.world.ground.at(eye.x, eye.y) + 12);
+    return player.renderPosed(() => {
+      fs.pose(this.fx.frames, this.fx.offsets);
+      player.post.update(AMBIENT_FRAME, []);
+      this.cloud.value = (now / 1000) * 0.05;
+      fs.setCamera(eye, at, Math.max(0.42, 0.46 / player.view.aspect), player.view);
+      this.world.update(eye);
+    }, now);
   }
 
   /** Put the valley away (back to the film's world for the menu). */
   leave() {
+    this.backdropOn = false;
     const fs = this.player.fs;
     this.world.group.visible = false;
     // the film and the stages are graded as filmed, through the full chain
@@ -553,7 +604,7 @@ export class Explore {
             f.active = false;
             f.actor.remove();
           }
-          this.toast("Trại bóng đã yên trở lại", 3);
+          this.toast("The shadow camp falls quiet again", 3);
           this.setPhase("roam");
           break;
         }
@@ -636,7 +687,7 @@ export class Explore {
       this.combat.hitStop(3, 0.3 * boss.scale);
       this.events.sound?.("slam");
     });
-    this.say("HẮC TƯỚNG", "SHADOW GENERAL OF THE PAGODA");
+    this.say("SHADOW GENERAL", "HẮC TƯỚNG · LORD OF THE PAGODA");
   }
 
   /** Shrines to light and spirits to gather, as SORA passes by. */
@@ -650,7 +701,7 @@ export class Explore {
       this.checkpointYaw = hero.yaw;
       hero.hp = hero.maxHp;
       this.fx.fire("dashSora", this.time, V.set(s.x, s.y, s.z), 0, 0.05);
-      this.toast("Đền đã thắp · hồi đầy máu · điểm hồi sinh mới", 3.5);
+      this.toast("Shrine lit · health restored · new respawn point", 3.5);
       this.events.sound?.("clash");
     }
     const t = this.clock;
@@ -663,7 +714,7 @@ export class Explore {
         sp.mesh.visible = false;
         this.combat.gainEnergy(20);
         const n = this.spirits.filter((x) => x.found).length;
-        this.toast(`Linh hồn sen ${n}/${this.spirits.length}`, 2.5);
+        this.toast(`Lotus spirit ${n}/${this.spirits.length}`, 2.5);
         this.events.sound?.("block");
       }
     }
@@ -880,7 +931,7 @@ export class Explore {
     h.hp = Math.ceil(this.hero.hp);
     h.maxHp = this.hero.maxHp;
     const showBoss = this.phase === "bossIntro" || this.phase === "boss";
-    h.boss = showBoss ? { hp: Math.ceil(this.boss.hp), max: this.boss.maxHp, name: "HẮC TƯỚNG", title: "SHADOW GENERAL" } : null;
+    h.boss = showBoss ? { hp: Math.ceil(this.boss.hp), max: this.boss.maxHp, name: "SHADOW GENERAL", title: "HẮC TƯỚNG" } : null;
     h.combo = this.combat.combo;
     h.level = this.level;
     h.xp = this.xp;

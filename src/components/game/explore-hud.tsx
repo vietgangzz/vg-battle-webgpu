@@ -23,6 +23,7 @@ export function ExploreHud({
   pops,
   onPopDone,
   onPause,
+  fps,
 }: {
   state: HudState;
   manifest: WorldManifest;
@@ -34,6 +35,8 @@ export function ExploreHud({
   pops: Pop[];
   onPopDone: (id: number) => void;
   onPause: () => void;
+  /** frames per second actually delivered (shown small by the pause button) */
+  fps?: number;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -69,6 +72,7 @@ export function ExploreHud({
           {!state.boss && <Quests state={state} top={top + 108} left={left} />}
           <Combo count={state.combo} timer={combo} />
           {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 50 + MAP + 70} />}
+          {!!fps && <Text style={[styles.fps, { top: top + 12, right: right + 50 }]}>{fps} FPS</Text>}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right }]}>
             <PauseIcon />
           </Pressable>
@@ -157,10 +161,10 @@ function Minimap({ manifest, state, map, top, right }: { manifest: WorldManifest
 function Quests({ state, top, left }: { state: HudState; top: number; left: number }) {
   const o = state.objectives;
   const rows: [string, string, boolean][] = [
-    ["Thắp đền thờ", `${o.shrines[0]}/${o.shrines[1]}`, o.shrines[0] === o.shrines[1]],
-    ["Dẹp trại bóng", `${o.camps[0]}/${o.camps[1]}`, o.camps[0] === o.camps[1]],
-    ["Linh hồn sen", `${o.spirits[0]}/${o.spirits[1]}`, o.spirits[0] === o.spirits[1]],
-    ["Hắc Tướng · chùa", o.boss ? "!" : "", false],
+    ["Light the shrines", `${o.shrines[0]}/${o.shrines[1]}`, o.shrines[0] === o.shrines[1]],
+    ["Clear shadow camps", `${o.camps[0]}/${o.camps[1]}`, o.camps[0] === o.camps[1]],
+    ["Lotus spirits", `${o.spirits[0]}/${o.spirits[1]}`, o.spirits[0] === o.spirits[1]],
+    ["Shadow General · pagoda", o.boss ? "!" : "", false],
   ];
   // the first thing not yet done is the one to chase
   const current = rows.findIndex(([, , done]) => !done);
@@ -168,7 +172,7 @@ function Quests({ state, top, left }: { state: HudState; top: number; left: numb
     <View style={[styles.quests, { top, left, pointerEvents: "none" }]}>
       <View style={styles.questHead}>
         <View style={styles.questHeadBar} />
-        <Text style={styles.questTitle}>NHIỆM VỤ</Text>
+        <Text style={styles.questTitle}>QUESTS</Text>
       </View>
       {rows.map(([k, v, done], i) => (
         <View key={k} style={[styles.questRow, i === current && styles.questCurrent]}>
@@ -232,6 +236,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(213,246,75,0.55)",
     maxWidth: "46%",
   },
+  fps: { position: "absolute", color: IVORY, opacity: 0.6, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 1, pointerEvents: "none" },
   toastDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: LIME },
   toastText: { color: IVORY, fontFamily: UI_FONT, fontSize: 13 },
 });

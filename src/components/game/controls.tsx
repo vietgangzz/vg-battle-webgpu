@@ -543,7 +543,7 @@ function ActionButton({
             <AnimatedText editable={false} underlineColorAndroid="transparent" style={[styles.seconds, { fontSize: r * 0.6 }]} animatedProps={seconds} defaultValue="" />
           </Animated.View>
         )}
-        {finish && <Text style={styles.finishText}>KẾT LIỄU</Text>}
+        {finish && <Text style={styles.finishText}>FINISH</Text>}
       </Animated.View>
       {isSkill && (
         <Animated.View style={[StyleSheet.absoluteFill, pingStyle]}>
