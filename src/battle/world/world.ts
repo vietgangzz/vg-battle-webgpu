@@ -57,7 +57,7 @@ const HERO_NEAR: Record<string, number> = {
   river_rocks: 90,
   tre_grove: 200,
 };
-const HERO_REFLECT = new Set(["pagoda_hall", "tam_quan_gate", "bell_tower", "village_house", "banyan_shrine", "boat_pier", "sampan", "village_gate"]);
+const HERO_REFLECT = new Set(["pagoda_hall", "tam_quan_gate", "bell_tower", "village_house", "banyan_shrine", "boat_pier", "sampan", "village_gate", "thuy_dinh"]);
 
 export class World {
   readonly group = new THREE.Group();
