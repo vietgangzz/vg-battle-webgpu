@@ -45,6 +45,16 @@ const player = {
     return true;
   },
 };
+if (process.argv.includes("--fill")) {
+  const { Meadow } = await import("../src/battle/world/grass");
+  const proto = Meadow.prototype as unknown as { fill: (c: unknown) => void };
+  const orig = proto.fill;
+  proto.fill = function (c: unknown) {
+    const t = performance.now();
+    orig.call(this, c);
+    console.log(`  meadow fill ${(performance.now() - t).toFixed(1)} ms`);
+  };
+}
 const game = new Explore(player as never, data, { pop: () => pops++ }, buildCreatures(cman, cblobs));
 game.start(true);
 await game.warm((o) => renderer.compileAsync(o, fs.camera, fs.scene));
@@ -75,6 +85,7 @@ const measure = async (label: string, seconds: number, act: (i: number) => void)
     }
     await env.device.queue.onSubmittedWorkDone();
     cpu.push(c1 - c0);
+    if (process.argv.includes("--slow") && c1 - c0 > 16) console.log(`  slow ${label} frame ${i}: ${(c1 - c0).toFixed(1)} ms, ${renderer.info.render.drawCalls} draws`);
     gpu.push(performance.now() - c1);
   }
   const avg = (a: number[]) => a.reduce((p, q) => p + q, 0) / a.length;

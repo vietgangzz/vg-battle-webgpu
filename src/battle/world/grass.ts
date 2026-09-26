@@ -18,6 +18,8 @@ const RADIUS = 22;
 const CELL = 0.42;
 /** rebuild when the camera has moved this far */
 const STEP = 2.5;
+/** lattice cells per side of a cached tile */
+const TILE = 14;
 
 // ---------------------------------------------------------------- the tuft
 /**
@@ -213,27 +215,31 @@ export class Meadow {
     this.fill(camera);
   }
 
-  private fill(cam: THREE.Vector3) {
-    const g = this.grass.buf.array as Float32Array;
-    const f = this.flowers.buf.array as Float32Array;
-    let ng = 0;
-    let nf = 0;
-    const i0 = Math.floor((cam.x - RADIUS) / CELL);
-    const i1 = Math.ceil((cam.x + RADIUS) / CELL);
-    const j0 = Math.floor((cam.y - RADIUS) / CELL);
-    const j1 = Math.ceil((cam.y + RADIUS) / CELL);
-    // nearby blockers only (houses, trunks, towers)
-    const near = this.blocked.filter((b) => Math.hypot(b.x - cam.x, b.y - cam.y) < RADIUS + b.r + 2);
-    for (let j = j0; j <= j1; j++) {
-      for (let i = i0; i <= i1; i++) {
-        const h0 = hash(i, j, 1);
+  /**
+   * The lattice's candidates, per tile of TILE x TILE cells, worked out once:
+   * everything that does not depend on where the camera is (the jitter, the
+   * masks, the ground's height, the blockers, the lushness, which could be a
+   * flower). Rows of (x, y, z, yaw, scale, thinning key, flower scale or 0).
+   * Refilling then only measures distances: the full rebuild (hashes, masks,
+   * heights for eleven thousand cells) cost 5 to 20 ms on a phone's JS engine,
+   * every couple of metres the camera moved.
+   */
+  private readonly tiles = new Map<number, Float32Array>();
+
+  private tile(ti: number, tj: number) {
+    const key = ti * 100003 + tj;
+    let t = this.tiles.get(key);
+    if (t) return t;
+    if (this.tiles.size > 900) this.tiles.clear();
+    const rows: number[] = [];
+    const x0 = ti * TILE * CELL;
+    const y0 = tj * TILE * CELL;
+    const span = TILE * CELL;
+    const near = this.blocked.filter((b) => b.x + b.r + 1 > x0 && b.x - b.r - 1 < x0 + span && b.y + b.r + 1 > y0 && b.y - b.r - 1 < y0 + span);
+    for (let j = tj * TILE; j < (tj + 1) * TILE; j++) {
+      for (let i = ti * TILE; i < (ti + 1) * TILE; i++) {
         const x = (i + hash(i, j, 2)) * CELL;
         const y = (j + hash(i, j, 3)) * CELL;
-        const dist = Math.hypot(x - cam.x, y - cam.y);
-        if (dist > RADIUS) continue;
-        // thinning with distance: all of them close in, a third at the rim
-        const keep = 1 - 0.6 * Math.min(1, Math.max(0, (dist - 8) / (RADIUS - 8)));
-        if (h0 > keep) continue;
         const bad = this.masks.at(x, y);
         if (bad > 0.35) continue;
         const z = this.ground.at(x, y);
@@ -247,29 +253,61 @@ export class Meadow {
           }
         }
         if (inside) continue;
-        // shrink to nothing over the last metres, and where the ground is turning bare
-        const edge = 1 - Math.min(1, Math.max(0, (dist - (RADIUS - 6)) / 6));
         const lush = 1 - Math.min(1, bad / 0.35);
-        const scale = (0.8 + 0.45 * hash(i, j, 4)) * edge * (0.45 + 0.55 * lush);
-        if (scale < 0.05) continue;
-        const yaw = hash(i, j, 5) * Math.PI * 2;
+        const scale = (0.8 + 0.45 * hash(i, j, 4)) * (0.45 + 0.55 * lush);
         // wild flowers grow in drifts, not evenly: a few patches, sparse within
         const drift = hash(i >> 4, j >> 4, 11) < 0.3;
-        const flower = drift && hash(i, j, 6) < 0.1 && dist < 18;
-        if (flower && nf < this.flowers.cap) {
-          const o = nf++ * 5;
-          f[o] = x;
-          f[o + 1] = y;
-          f[o + 2] = z - 0.02;
-          f[o + 3] = yaw;
-          f[o + 4] = scale * (0.9 + 0.5 * hash(i, j, 7));
-        } else if (ng < this.grass.cap) {
-          const o = ng++ * 5;
-          g[o] = x;
-          g[o + 1] = y;
-          g[o + 2] = z - 0.04;
-          g[o + 3] = yaw;
-          g[o + 4] = scale;
+        const flower = drift && hash(i, j, 6) < 0.1 ? 0.9 + 0.5 * hash(i, j, 7) : 0;
+        rows.push(x, y, z, hash(i, j, 5) * Math.PI * 2, scale, hash(i, j, 1), flower);
+      }
+    }
+    t = new Float32Array(rows);
+    this.tiles.set(key, t);
+    return t;
+  }
+
+  private fill(cam: THREE.Vector3) {
+    const g = this.grass.buf.array as Float32Array;
+    const f = this.flowers.buf.array as Float32Array;
+    let ng = 0;
+    let nf = 0;
+    const span = TILE * CELL;
+    const t0 = Math.floor((cam.x - RADIUS) / span);
+    const t1 = Math.floor((cam.x + RADIUS) / span);
+    const u0 = Math.floor((cam.y - RADIUS) / span);
+    const u1 = Math.floor((cam.y + RADIUS) / span);
+    const r2 = RADIUS * RADIUS;
+    for (let tj = u0; tj <= u1; tj++) {
+      for (let ti = t0; ti <= t1; ti++) {
+        const rows = this.tile(ti, tj);
+        for (let k = 0; k < rows.length; k += 7) {
+          const dx = rows[k] - cam.x;
+          const dy = rows[k + 1] - cam.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > r2) continue;
+          const dist = Math.sqrt(d2);
+          // thinning with distance: all of them close in, a third at the rim
+          const keep = 1 - 0.6 * Math.min(1, Math.max(0, (dist - 8) / (RADIUS - 8)));
+          if (rows[k + 5] > keep) continue;
+          // shrink to nothing over the last metres
+          const edge = 1 - Math.min(1, Math.max(0, (dist - (RADIUS - 6)) / 6));
+          const scale = rows[k + 4] * edge;
+          if (scale < 0.05) continue;
+          if (rows[k + 6] > 0 && dist < 18 && nf < this.flowers.cap) {
+            const o = nf++ * 5;
+            f[o] = rows[k];
+            f[o + 1] = rows[k + 1];
+            f[o + 2] = rows[k + 2] - 0.02;
+            f[o + 3] = rows[k + 3];
+            f[o + 4] = scale * rows[k + 6];
+          } else if (ng < this.grass.cap) {
+            const o = ng++ * 5;
+            g[o] = rows[k];
+            g[o + 1] = rows[k + 1];
+            g[o + 2] = rows[k + 2] - 0.04;
+            g[o + 3] = rows[k + 3];
+            g[o + 4] = scale;
+          }
         }
       }
     }
