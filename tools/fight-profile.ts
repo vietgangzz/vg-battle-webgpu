@@ -57,6 +57,27 @@ if (process.argv.includes("--fill")) {
 }
 const game = new Explore(player as never, data, { pop: () => pops++ }, buildCreatures(cman, cblobs));
 game.start(true);
+// --bundle: the valley's still pieces recorded once as render bundles (the experiment)
+if (process.argv.includes("--bundle")) {
+  const world = (game as unknown as { world: { group: import("three/webgpu").Group; frozen: Set<import("three/webgpu").Object3D>; update: (c: unknown) => void } }).world;
+  const bundle = new (THREE as unknown as { BundleGroup: new () => import("three/webgpu").Group }).BundleGroup();
+  let n = 0;
+  for (const c of [...world.frozen]) {
+    if (c.name === "world:meadow" || c.type === "Group") continue; // the meadow refills; groups hold changing things
+    c.traverse((o) => {
+      o.frustumCulled = false;
+      o.visible = true;
+    });
+    bundle.add(c);
+    n++;
+  }
+  world.group.add(bundle);
+  bundle.updateMatrixWorld(true);
+  world.frozen.add(bundle);
+  // chunk culling would change what the bundle holds: off for the experiment (everything drawn)
+  world.update = () => {};
+  console.log(`bundled ${n} still pieces`);
+}
 await game.warm((o) => renderer.compileAsync(o, fs.camera, fs.scene));
 await renderer.compileAsync(fs.scene, fs.camera);
 let t = 3;
