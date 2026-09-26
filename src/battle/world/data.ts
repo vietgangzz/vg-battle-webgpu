@@ -27,7 +27,7 @@ export interface WorldManifest {
   heightfield: { o: number; n: number; x0: number; cell: number };
   meshes: WorldMesh[];
   /** `tex`: rows of sRGB bytes (RGB, bottom row first) for a hero piece's painted texture */
-  statics: { name: string; mesh: number; kind: "terrain" | "karst" | "prop" | "hero"; tex?: { o: number; w: number; h: number } }[];
+  statics: { name: string; mesh: number; kind: "terrain" | "karst" | "prop" | "hero" | "glow"; tex?: { o: number; w: number; h: number } }[];
   instances: { name: string; mesh: number; kind: InstanceKind; count: number; chunks: WorldChunk[] }[];
   colliders: { x: number; y: number; r: number }[];
   markers: { name: string; type: "spawn" | "shrine" | "camp" | "boss"; at: [number, number]; z: number; yaw?: number; waves?: number }[];
@@ -39,6 +39,8 @@ export interface WorldManifest {
   village: [number, number, number];
   temple: [number, number];
   terraces: [number, number, number, number];
+  /** the valley's lights, for the glow drawn round them */
+  halos?: [number, number, number, "silk" | "flame"][];
 }
 
 export class WorldData {

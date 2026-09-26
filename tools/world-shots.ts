@@ -19,7 +19,8 @@ const env = await setup(W, H);
 const { THREE, fs, post, framing, tick, grab, renderer } = env;
 const { WorldData } = await import("../src/battle/world/data");
 const { World } = await import("../src/battle/world/world");
-const { MORNING } = await import("../src/battle/world/look");
+const { MORNING, DUSK, mixLook } = await import("../src/battle/world/look");
+const { LAMP } = await import("../src/battle/world/shaders");
 const { applyLook } = await import("../src/battle/game/environment");
 const { Actor } = await import("../src/battle/game/actor");
 
@@ -30,7 +31,10 @@ const t0 = performance.now();
 const world = new World(data, fs);
 console.log("world built", Math.round(performance.now() - t0), "ms");
 world.group.visible = true;
-applyLook(fs, MORNING);
+// --dusk 0..1: how far the day has gone
+const dusk = Number(arg("--dusk", "0"));
+applyLook(fs, mixLook(MORNING, DUSK, dusk));
+LAMP.strength.node.value = 1 + 0.7 * dusk;
 
 // SORA for scale, and the film's own world out of the way
 const sora = new Actor(fs, "hero");

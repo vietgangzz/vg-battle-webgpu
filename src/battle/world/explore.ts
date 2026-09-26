@@ -20,7 +20,8 @@ import { Orbs, TargetRing } from "../game/pickups";
 import { Materials } from "../game/shading";
 import type { FilmPlayer } from "../runtime/player";
 import type { WorldData } from "./data";
-import { MORNING } from "./look";
+import { DUSK, MORNING, mixLook } from "./look";
+import { LAMP } from "./shaders";
 import { OrbitCamera } from "./orbit";
 import { World } from "./world";
 
@@ -240,6 +241,7 @@ export class Explore {
     const m = this.world.data.manifest;
     this.world.group.visible = true;
     applyLook(fs, MORNING);
+    this.shownDusk = -1;
     fs.setExternal(this.externals, true);
     fs.setExternal(["kage_body", "kage_eye0", "kage_eye1", "kage_band", "kage_hand_r", "kage_hand_l", "kage_blade", "kage_tail0", "kage_tail1", "kage_ghost1", "kage_ghost2", "kage_ghost3"], true);
     for (const n of ["kage_body", "kage_eye0", "kage_eye1", "kage_band", "kage_hand_r", "kage_hand_l", "kage_blade", "kage_tail0", "kage_tail1", "kage_ghost1", "kage_ghost2", "kage_ghost3"]) fs.object(n).visible = false;
@@ -657,9 +659,30 @@ export class Explore {
   }
 
   // ---------------------------------------------------------------- drawing
+  /** 0 = morning, 1 = dusk: where the valley's day stands, and what was last put on screen. */
+  private dusk = 0;
+  private shownDusk = -1;
+
+  /** How far the day has gone: the shrines lit and camps cleared bring the evening on; the General comes at dusk. */
+  private duskTarget() {
+    if (["bossIntro", "boss", "clear", "results"].includes(this.phase)) return 1;
+    const done = this.shrines.filter((s) => s.lit).length + this.camps.filter((c) => c.state === "cleared").length;
+    return (0.8 * done) / Math.max(1, this.shrines.length + this.camps.length);
+  }
+
+  private daylight(dt: number, snap = false) {
+    const target = this.duskTarget();
+    this.dusk = snap ? target : this.dusk + (target - this.dusk) * (1 - Math.exp(-dt * 0.3));
+    if (Math.abs(this.dusk - this.shownDusk) < 0.002) return;
+    this.shownDusk = this.dusk;
+    applyLook(this.player.fs, mixLook(MORNING, DUSK, this.dusk));
+    LAMP.strength.node.value = 1 + 0.7 * this.dusk;
+  }
+
   private pose() {
     const player = this.player;
     const fs = player.fs;
+    this.daylight(DT);
     this.motesTime.value = 3 + (this.clock % 16);
     this.cloud.value = this.clock * 0.05;
     fs.pose(this.fx.frames, this.fx.offsets);

@@ -8,7 +8,7 @@ import * as THREE from "three/webgpu";
 import { water } from "../game/shading";
 import type { FilmScene } from "../runtime/scene";
 import { Heightfield, type WorldData, type WorldMesh } from "./data";
-import { heroMaterial, karstMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
+import { haloMaterial, heroMaterial, karstMaterial, lampMaterial, mistMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
 
 /** Plants that only matter up close (and never in the water's reflection). */
 const NEAR: Record<string, number> = { grass: 45, rice: 80, reed: 70, shrub: 110, lotus: 90, karstShrub: 400, boulder: 140 };
@@ -50,7 +50,9 @@ export class World {
             ? karstMaterial()
             : s.kind === "hero" && s.tex
               ? heroMaterial(this.texture(s.tex))
-              : propMaterial();
+              : s.kind === "glow"
+                ? lampMaterial()
+                : propMaterial();
       const mesh = new THREE.Mesh(geos[s.mesh], mat);
       mesh.name = `world:${s.name}`;
       mesh.frustumCulled = s.kind !== "terrain";
@@ -62,6 +64,30 @@ export class World {
     w.position.z = m.water - 0.02;
     w.name = "world:water";
     this.group.add(w);
+
+    // morning mist: two thin sheets low over the valley floor, drawn after everything solid
+    for (const [z, density] of [
+      [1.6, 0.34],
+      [4.5, 0.22],
+    ] as const) {
+      const mist = new THREE.Mesh(new THREE.PlaneGeometry(m.size * 1.6, m.size * 1.6), mistMaterial(z, density));
+      mist.position.z = z;
+      mist.renderOrder = 5;
+      mist.name = "world:mist";
+      mist.layers.set(NO_REFLECT);
+      this.group.add(mist);
+    }
+
+    // the glow round every lantern and flame
+    const halo = { silk: haloMaterial([1, 0.3, 0.1], 3.2), flame: haloMaterial([1, 0.62, 0.25], 2.6) };
+    for (const [x, y, z, kind] of m.halos ?? []) {
+      const sp = new THREE.Sprite(halo[kind]);
+      sp.position.set(x, y, z);
+      sp.scale.setScalar(kind === "silk" ? 2.4 : 1.8);
+      sp.renderOrder = 6;
+      sp.name = "world:halo";
+      this.group.add(sp);
+    }
 
     const mats = new Map<PlantLook, THREE.Material>();
     for (const inst of m.instances) {

@@ -8,6 +8,8 @@
  *  foliage  soft cel-shaded crowns that glow when backlit, swaying in the wind
  *  blades   grass, reeds and rice: dark roots to sunlit tips, bending in gusts
  *  prop     built pieces, banded from their vertex colour
+ *  lamp     lantern silk, flames and incense: well past the bloom threshold,
+ *           breathing like a flame, so they glow through the morning haze
  *  hero     the Meshy pieces (pagoda, gate, houses, boats, guardians): their
  *           painted texture under the same light, in softer bands
  *
@@ -27,6 +29,8 @@ const U = ENV_U;
 
 /** Gusts rolling across the valley. */
 export const WIND = { strength: t3.uniform(1, d.f32) };
+/** How hard the lanterns burn (they come up as the day goes down). */
+export const LAMP = { strength: t3.uniform(1, d.f32) };
 
 /** 0 / 0.55 / 1 toon bands on the lit irradiance (mascot.toon). */
 const bands = (e: d.v3f) => {
@@ -297,4 +301,67 @@ export function heroMaterial(tex: THREE.Texture) {
     c = std.add(c, std.mul(U.skyHorizon.$, std.smoothstep(0.7, 0.95, facing(n, v)) * 0.08));
     return d.vec4f(fog(c, pw), 1);
   });
+}
+
+// ---------------------------------------------------------------- lamps
+/** Anything that burns: its vertex colour pushed far into HDR (the bloom's threshold is 1.3), flickering. */
+export function lampMaterial() {
+  const col = t3.attribute("col", d.vec3f);
+  return material(() => {
+    "use gpu";
+    const pw = t3.positionWorld.$;
+    const f = B.noise3(d.vec3f(pw.x * 0.9, pw.y * 0.9, t3.time.$ * 2.4), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0));
+    // bright enough to bloom (threshold 1.3), not so bright the tone curve bleaches the silk white
+    const k = (1.25 + 0.6 * f) * LAMP.strength.$;
+    return d.vec4f(fog(std.mul(col.$, k), pw), 1);
+  });
+}
+
+// ---------------------------------------------------------------- morning mist
+/**
+ * A sheet of morning mist at one height: drifting fbm, torn open in places,
+ * thin where the camera stands and thickening with distance, so the karsts
+ * stand in layers the way they do over Tràng An at dawn.
+ */
+export function mistMaterial(height: number, density: number) {
+  const m = material(() => {
+    "use gpu";
+    const pw = t3.positionWorld.$;
+    const t = t3.time.$;
+    const drift = d.vec3f(pw.x * 0.012 + t * 0.006, pw.y * 0.012 - t * 0.004, height * 0.1);
+    const n = B.noise3(drift, d.f32(1), d.f32(4), 0.55, d.f32(2), 0.3);
+    const torn = std.smoothstep(0.42, 0.72, n);
+    const dist = std.length(std.sub(t3.cameraPosition.$, pw));
+    const far = std.smoothstep(14, 70, dist) * (1 - std.smoothstep(220, 320, dist));
+    const a = torn * far * density;
+    const c = std.mix(U.skyHorizon.$, d.vec3f(1, 1, 1), 0.35);
+    return d.vec4f(c, a);
+  });
+  m.transparent = true;
+  m.depthWrite = false;
+  m.side = THREE.DoubleSide;
+  return m;
+}
+
+// ---------------------------------------------------------------- lamp halos
+/**
+ * The soft light round a lantern: a camera-facing disc, bright at the heart
+ * and falling off smoothly to nothing at its edge (never a hard rim), added
+ * over the scene. It grows with the evening (LAMP) and fades with distance.
+ */
+export function haloMaterial(color: [number, number, number], brightness: number) {
+  const m = new THREE.SpriteNodeMaterial();
+  const r = TSL.uv().sub(0.5).length().mul(2);
+  const core = TSL.float(1).sub(r).clamp(0, 1);
+  // a tight hot centre on a wide soft skirt
+  const fall = core.pow(3).mul(0.7).add(core.pow(8).mul(0.9));
+  const dist = TSL.cameraPosition.sub(TSL.positionWorld).length();
+  const fade = TSL.float(1).sub(TSL.smoothstep(45, 170, dist));
+  const evening = LAMP.strength.node.sub(0.65).max(0.2);
+  m.colorNode = TSL.vec4(TSL.vec3(...color).mul(evening.mul(brightness)), fall.mul(fade));
+  m.transparent = true;
+  m.depthWrite = false;
+  m.blending = THREE.AdditiveBlending;
+  m.fog = false;
+  return m;
 }
