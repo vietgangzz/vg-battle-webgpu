@@ -17,6 +17,8 @@ export class OrbitCamera {
   /** above the horizon (radians) */
   pitch = 16 * DEG;
   private dist = 7.5;
+  /** how far the view is clear of walls behind her (0..1 of dist), eased back out */
+  private clear = 1;
   private lastLook = -10;
   private shakeAmp = 0;
   private shakeT = 0;
@@ -35,7 +37,14 @@ export class OrbitCamera {
     return this.yaw;
   }
 
-  update(dt: number, now: number, hero: Actor, foe: Actor | null, ground: (x: number, y: number) => number) {
+  update(
+    dt: number,
+    now: number,
+    hero: Actor,
+    foe: Actor | null,
+    ground: (x: number, y: number) => number,
+    clearance?: (from: THREE.Vector3, to: THREE.Vector3) => number,
+  ) {
     // the point we look at: SORA, or between her and whoever she is fighting
     const want = new THREE.Vector3(hero.pos.x, hero.pos.y, hero.pos.z + 1.35);
     let wantDist = 7.5;
@@ -66,6 +75,13 @@ export class OrbitCamera {
       this.focus.y - Math.sin(this.yaw) * cp * this.dist,
       this.focus.z + Math.sin(this.pitch) * this.dist,
     );
+    // a wall between her and the lens: come in front of it (quickly), and ease back out once past
+    if (clearance) {
+      const t = clearance(this.focus, this.position);
+      const want = Math.max(0.28, t);
+      this.clear = want < this.clear ? THREE.MathUtils.damp(this.clear, want, 18, dt) : THREE.MathUtils.damp(this.clear, want, 2.5, dt);
+      this.position.lerpVectors(this.focus, this.position, this.clear);
+    }
     // keep clear of the ground
     const floor = ground(this.position.x, this.position.y) + 0.8;
     if (this.position.z < floor) this.position.z = floor;

@@ -110,7 +110,7 @@ export function toon(p: Palette) {
     let base = d.vec3f(Bc);
     let shade = d.vec3f(S);
     if (mottle > 0) {
-      const k = B.noise3(pw, 0.45, 3, 0.55, 2, 0);
+      const k = B.noise3(pw, 0.45, d.f32(3), 0.55, d.f32(2), d.f32(0));
       const f = 1 - mottle + mottle * 1.6 * k;
       base = std.mul(base, f);
       shade = std.mul(shade, f);
@@ -173,7 +173,7 @@ export function skyNode() {
     // clouds on a plane high above: dir / z, drifting
     const plane = std.div(dir.xy, std.max(z, 0.04) + 0.08);
     const q = d.vec3f(plane.x * 0.55 + t * 0.012, plane.y * 0.55 + t * 0.004, t * 0.01);
-    const n = B.noise3(q, 1, 5, 0.55, 2, 0.4);
+    const n = B.noise3(q, d.f32(1), d.f32(5), 0.55, d.f32(2), 0.4);
     const cover = U.cloudCover.$;
     const c = std.smoothstep(1 - cover, 1.2 - cover, n) * std.smoothstep(0.0, 0.18, z);
     const lit = std.saturate(0.55 + std.dot(dir, U.sunDir.$) * 0.45);
@@ -211,10 +211,10 @@ export function water(reflection: [Accessor<d.Vec3f>, Accessor<d.Vec3f>] | null)
     // two crossing swells and a fine chop, as a normal
     const a = pw.x * 1.1 + pw.y * 0.35 + t * 1.3;
     const b = pw.y * 1.7 - pw.x * 0.5 - t * 0.9;
-    const chop = B.noise3(d.vec3f(pw.x * 0.9, pw.y * 0.9, t * 0.35), 1, 2, 0.5, 2, 0) - 0.5;
+    const chop = B.noise3(d.vec3f(pw.x * 0.9, pw.y * 0.9, t * 0.35), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0)) - 0.5;
     const n = std.normalize(d.vec3f(std.cos(a) * 0.05 + chop * 0.12, std.cos(b) * 0.06 + chop * 0.1, 1));
     const fres = 0.08 + 0.92 * std.pow(1 - std.saturate(std.dot(n, v)), 4);
-    const depth = B.noise3(d.vec3f(pw.x * 0.04, pw.y * 0.04, 0), 1, 3, 0.5, 2, 0);
+    const depth = B.noise3(d.vec3f(pw.x * 0.04, pw.y * 0.04, 0), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
     let col = std.mix(U.waterDeep.$, U.waterShallow.$, std.saturate(depth * 1.2 - 0.1));
     col = std.mix(col, mirrored(), fres * 0.8);
     // sun glint
@@ -235,7 +235,7 @@ export function cloudSea() {
     const pw = t3.positionWorld.$;
     const t = t3.time.$;
     const q = d.vec3f(pw.x * 0.035 + t * 0.01, pw.y * 0.035, t * 0.015);
-    const n = B.noise3(q, 1, 5, 0.6, 2, 0.6);
+    const n = B.noise3(q, d.f32(1), d.f32(5), 0.6, d.f32(2), 0.6);
     const lit = std.smoothstep(0.35, 0.75, n);
     const col = std.mix(U.cloudSeaShade.$, U.cloudSeaLit.$, lit);
     return d.vec4f(fog(col, pw), 1);

@@ -104,6 +104,33 @@ export class World {
     for (const c of this.chunks) c.mesh.visible = c.center.distanceTo(camera) - c.radius < c.near;
   }
 
+  /**
+   * How far along the line from `from` to `to` (0..1) the view is clear of
+   * anything solid, so the camera can come in front of a wall instead of
+   * looking at its back.
+   */
+  clearance(from: THREE.Vector3, to: THREE.Vector3, pad: number) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-6) return 1;
+    let t = 1;
+    for (const c of this.data.manifest.colliders) {
+      const r = c.r + pad;
+      const fx = from.x - c.x;
+      const fy = from.y - c.y;
+      // |f + d t|^2 = r^2
+      const b = fx * dx + fy * dy;
+      const cc = fx * fx + fy * fy - r * r;
+      if (cc < 0) continue; // the subject is inside it already: nothing sensible to do
+      const disc = b * b - len2 * cc;
+      if (disc < 0) continue;
+      const hit = (-b - Math.sqrt(disc)) / len2;
+      if (hit > 0 && hit < t) t = hit;
+    }
+    return t;
+  }
+
   /** Push a point out of anything solid (karst feet, houses, the hall) and keep it out of deep water. */
   collide(p: THREE.Vector3, radius: number, from: THREE.Vector3) {
     for (const c of this.data.manifest.colliders) {

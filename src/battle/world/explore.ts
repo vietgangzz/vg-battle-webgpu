@@ -665,8 +665,16 @@ export class Explore {
     fs.pose(this.fx.frames, this.fx.offsets);
     player.post.update(AMBIENT_FRAME, this.fx.postFrames(this.postFrames));
     const foe = this.phase === "boss" || this.phase === "bossIntro" || this.phase === "clear" ? this.boss : this.hero.target;
-    this.camera.update(DT, this.clock, this.hero, foe, (x, y) => this.world.ground.at(x, y));
-    fs.setCamera(this.camera.position, this.camera.target, 0.42, player.view);
+    this.camera.update(
+      DT,
+      this.clock,
+      this.hero,
+      foe,
+      (x, y) => this.world.ground.at(x, y),
+      (from, to) => this.world.clearance(from, to, 0.6),
+    );
+    // held upright the picture is narrow: widen the lens until it sees as far to the sides as it would lying down
+    fs.setCamera(this.camera.position, this.camera.target, Math.max(0.42, 0.46 / player.view.aspect), player.view);
     this.world.update(this.camera.position);
     this.updateBars();
     this.events.meters?.(this.meters);

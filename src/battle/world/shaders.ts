@@ -71,8 +71,8 @@ export function terrainMaterial() {
     const e = diffuse(pw, n, true);
     const k = bands(e);
     // grass: two greens drifting over the fields, a finer mottle
-    const macro = B.noise3(d.vec3f(pw.x * 0.018, pw.y * 0.018, 0), 1, 3, 0.5, 2, 0);
-    const fine = B.noise3(d.vec3f(pw.x * 0.35, pw.y * 0.35, 0), 1, 2, 0.5, 2, 0);
+    const macro = B.noise3(d.vec3f(pw.x * 0.018, pw.y * 0.018, 0), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
+    const fine = B.noise3(d.vec3f(pw.x * 0.35, pw.y * 0.35, 0), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0));
     let lit = std.mix(GRASS_A, GRASS_B, std.saturate(macro * 1.4 - 0.2 + (tone.$ - 0.5) * 0.6));
     lit = std.mul(lit, 0.85 + 0.3 * fine);
     let shade = d.vec3f(GRASS_SHADE);
@@ -94,7 +94,7 @@ export function terrainMaterial() {
     if (f > 0) {
       const fres = std.pow(1 - std.saturate(v.z), 3);
       const sky = std.mix(U.skyTop.$, U.skyHorizon.$, fres);
-      const ripple = B.noise3(d.vec3f(pw.x * 1.4, pw.y * 1.4, t3.time.$ * 0.25), 1, 2, 0.5, 2, 0);
+      const ripple = B.noise3(d.vec3f(pw.x * 1.4, pw.y * 1.4, t3.time.$ * 0.25), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0));
       const mirror = std.mix(std.mul(PADDY, 0.9 + 0.4 * e.x), std.mul(sky, 0.85 + 0.15 * ripple), 0.35 + fres * 0.55);
       const glint = std.pow(std.saturate(std.dot(std.reflect(std.neg(v), d.vec3f(0, 0, 1)), U.sunDir.$)), 90) * 2.5;
       col = std.mix(col, std.add(mirror, std.mul(U.sunColor.$, glint)), f);
@@ -121,11 +121,11 @@ export function karstMaterial() {
     const k = bands(e);
     // rain streaks run down the bare faces; lichen blotches
     const s = std.smoothstep(0.45, 0.8, streak.$);
-    const blotch = B.noise3(std.mul(pw, 0.12), 1, 3, 0.55, 2, 0);
+    const blotch = B.noise3(std.mul(pw, 0.12), d.f32(1), d.f32(3), 0.55, d.f32(2), d.f32(0));
     const rockLit = std.mul(LIME_LIT, (1 - s * 0.45) * (0.8 + 0.35 * blotch));
     const rockShade = std.mul(LIME_SHADE, 1 - s * 0.3);
     // jungle: patchy edges, a darker mottle within
-    const leafy = B.noise3(std.mul(pw, 0.35), 1, 3, 0.55, 2, 0);
+    const leafy = B.noise3(std.mul(pw, 0.35), d.f32(1), d.f32(3), 0.55, d.f32(2), d.f32(0));
     const g = std.smoothstep(0.35, 0.65, veg.$ + (leafy - 0.5) * 0.5);
     const jl = std.mul(JUNGLE_LIT, 0.75 + 0.6 * leafy);
     const lit = std.mix(rockLit, jl, g);
@@ -201,7 +201,7 @@ export function plantMaterial(look: PlantLook) {
     const yaw = rs.$.x;
     const s = rs.$.y;
     const local = rotZ(std.mul(t3.positionGeometry.$, s), yaw);
-    return std.add(std.add(root, local), gust(root, sway.$, s, windAmt));
+    return std.add(std.add(root, local), gust(root, sway.$, s, d.f32(windAmt)));
   };
   const shadePlant = () => {
     "use gpu";
@@ -262,7 +262,7 @@ export function propMaterial() {
     const e = diffuse(pw, n, true);
     const k = bands(e);
     const base = col.$;
-    const grime = B.noise3(std.mul(pw, 0.8), 1, 3, 0.5, 2, 0);
+    const grime = B.noise3(std.mul(pw, 0.8), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
     const lit = std.mul(base, 0.85 + 0.3 * grime);
     const shade = std.mul(base, 0.28);
     let c = std.add(std.mix(shade, lit, k), std.mul(std.mul(e, lit), 0.06));

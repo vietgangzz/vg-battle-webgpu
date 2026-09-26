@@ -36,6 +36,7 @@ export function ExploreHud({
   const insets = useSafeAreaInsets();
   const top = Math.max(insets.top, 16) + 10;
   const right = Math.max(insets.right, 14) + 6;
+  const left = Math.max(insets.left, 14) + 6;
   const playing = state.phase !== "results";
   return (
     <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}>
@@ -46,12 +47,12 @@ export function ExploreHud({
           {pops.map((p) => (
             <DamagePop key={p.id} pop={p} onDone={onPopDone} />
           ))}
-          <PlayerPanel hp={state.hp} max={state.maxHp} energy={energy} ready={state.ultReady} top={top} left={Math.max(insets.left, 14) + 6} />
+          <PlayerPanel hp={state.hp} max={state.maxHp} energy={energy} ready={state.ultReady} top={top} left={left} />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
           <Minimap manifest={manifest} state={state} map={map} top={top + 50} right={right} />
-          <Quests state={state} top={top + 50 + MAP + 14} right={right} />
+          <Quests state={state} top={top + 96} left={left} />
           <Combo count={state.combo} timer={combo} />
-          {!!state.toast && <Toast text={state.toast} bottom={insets.bottom + 250} />}
+          {!!state.toast && <Toast text={state.toast} top={top + 50 + MAP + 70} />}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right }]}>
             <PauseIcon />
           </Pressable>
@@ -136,7 +137,8 @@ function Minimap({ manifest, state, map, top, right }: { manifest: WorldManifest
   );
 }
 
-function Quests({ state, top, right }: { state: HudState; top: number; right: number }) {
+/** The quest tracker: what is left in the valley, under SORA's portrait. */
+function Quests({ state, top, left }: { state: HudState; top: number; left: number }) {
   const o = state.objectives;
   const rows: [string, string, boolean][] = [
     ["Thắp đền thờ", `${o.shrines[0]}/${o.shrines[1]}`, o.shrines[0] === o.shrines[1]],
@@ -144,12 +146,18 @@ function Quests({ state, top, right }: { state: HudState; top: number; right: nu
     ["Linh hồn sen", `${o.spirits[0]}/${o.spirits[1]}`, o.spirits[0] === o.spirits[1]],
     ["Hắc Tướng · chùa", o.boss ? "!" : "", false],
   ];
+  // the first thing not yet done is the one to chase
+  const current = rows.findIndex(([, , done]) => !done);
   return (
-    <View style={[styles.quests, { top, right, pointerEvents: "none" }]}>
-      {rows.map(([k, v, done]) => (
-        <View key={k} style={styles.questRow}>
-          <View style={[styles.questDot, done && styles.questDone]} />
-          <Text style={[styles.questText, done && styles.questTextDone]}>{k}</Text>
+    <View style={[styles.quests, { top, left, pointerEvents: "none" }]}>
+      <View style={styles.questHead}>
+        <View style={styles.questHeadBar} />
+        <Text style={styles.questTitle}>NHIỆM VỤ</Text>
+      </View>
+      {rows.map(([k, v, done], i) => (
+        <View key={k} style={[styles.questRow, i === current && styles.questCurrent]}>
+          <View style={[styles.questDot, done && styles.questDone, i === current && styles.questDotCurrent]} />
+          <Text style={[styles.questText, done && styles.questTextDone, i === current && styles.questTextCurrent]}>{k}</Text>
           <Text style={[styles.questCount, done && styles.questTextDone]}>{v}</Text>
         </View>
       ))}
@@ -157,9 +165,9 @@ function Quests({ state, top, right }: { state: HudState; top: number; right: nu
   );
 }
 
-function Toast({ text, bottom }: { text: string; bottom: number }) {
+function Toast({ text, top }: { text: string; top: number }) {
   return (
-    <Animated.View key={text} entering={FadeInDown.duration(320)} exiting={FadeOut.duration(250)} style={[styles.toast, { bottom, pointerEvents: "none" }]}>
+    <Animated.View key={text} entering={FadeInDown.duration(320)} exiting={FadeOut.duration(250)} style={[styles.toast, { top, pointerEvents: "none" }]}>
       <View style={styles.toastDot} />
       <Text style={styles.toastText}>{text}</Text>
     </Animated.View>
@@ -181,13 +189,19 @@ const styles = StyleSheet.create({
   map: { position: "absolute", width: MAP, height: MAP, borderRadius: MAP / 2, overflow: "hidden", backgroundColor: "#2F4A2A" },
   mapRing: { ...StyleSheet.absoluteFill, borderRadius: MAP / 2, borderWidth: 2, borderColor: "rgba(245,243,232,0.55)" },
   arrow: { position: "absolute", left: MAP / 2 - 10, top: MAP / 2 - 10, width: 20, height: 20 },
-  quests: { position: "absolute", width: 170, gap: 5, padding: 10, borderRadius: 12, backgroundColor: "rgba(18,22,25,0.5)", borderWidth: 1, borderColor: "rgba(245,243,232,0.18)" },
-  questRow: { flexDirection: "row", alignItems: "center", gap: 7 },
-  questDot: { width: 7, height: 7, transform: [{ rotate: "45deg" }], borderWidth: 1.2, borderColor: LIME },
-  questDone: { backgroundColor: LIME },
-  questText: { flex: 1, color: IVORY, fontFamily: UI_FONT, fontSize: 11 },
+  quests: { position: "absolute", width: 168, gap: 3, paddingVertical: 8, paddingRight: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: "rgba(12,15,17,0.42)", borderLeftWidth: 2, borderLeftColor: LIME },
+  questHead: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 3, paddingLeft: 9 },
+  questHeadBar: { width: 10, height: 2, backgroundColor: LIME },
+  questTitle: { color: LIME, fontFamily: UI_FONT, fontSize: 9, letterSpacing: 2.4 },
+  questRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingLeft: 10, paddingVertical: 2 },
+  questCurrent: { backgroundColor: "rgba(213,246,75,0.1)" },
+  questDot: { width: 7, height: 7, transform: [{ rotate: "45deg" }], borderWidth: 1.2, borderColor: IVORY, opacity: 0.7 },
+  questDotCurrent: { borderColor: LIME, opacity: 1 },
+  questDone: { backgroundColor: LIME, borderColor: LIME },
+  questText: { flex: 1, color: IVORY, fontFamily: UI_FONT, fontSize: 11, textShadowColor: "rgba(0,0,0,0.7)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+  questTextCurrent: { color: "#FFFFFF" },
   questCount: { color: LIME, fontFamily: UI_FONT, fontSize: 11 },
-  questTextDone: { opacity: 0.5 },
+  questTextDone: { opacity: 0.45 },
   toast: {
     position: "absolute",
     alignSelf: "center",
