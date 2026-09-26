@@ -21,7 +21,7 @@ import { COMBO_WINDOW, Combat, ENERGY_MAX, type Pop, SHOOT_COOLDOWN, SKILL_COOLD
 import { applyLook } from "../game/environment";
 import { restyleSora, setLineWidth } from "../game/mascot";
 import { AMBIENT_FRAME, FxDirector } from "../game/fx";
-import { BOLT_HIT, BOSS_ENTRY, SPAWN } from "../game/moves";
+import { BOLT_HIT, BOSS_ENTRY, SPAWN, TEMPEST_BOLT } from "../game/moves";
 import { Orbs, TargetRing } from "../game/pickups";
 import { ENV_U, Materials } from "../game/shading";
 import type { FilmPlayer } from "../runtime/player";
@@ -57,6 +57,8 @@ export interface ExploreHud {
   sub: string;
   combo: number;
   ultReady: boolean;
+  /** two full charges: the lotus tempest */
+  ult2Ready: boolean;
   /** a line of news: a shrine lit, a spirit found, a camp stirring */
   toast: string;
   objectives: Objectives;
@@ -251,7 +253,10 @@ export class Explore {
       // the shattered ground settles, then clears so the way stays open
       ultimate: () => this.after(3, () => this.fx.release("pierce")),
       shoot: (me) => this.throwBolt(me),
+      tempest: (me) => this.tempest(me),
     });
+    // the valley charges the ultimate twice over: the second full charge is the lotus tempest
+    this.combat.energyCap = ENERGY_MAX * 2;
     this.bolts = new Bolts(
       (x, y) => this.world.ground.at(x, y),
       (p) => this.world.solidAt(p),
@@ -309,6 +314,7 @@ export class Explore {
       sub: "",
       combo: 0,
       ultReady: false,
+      ult2Ready: false,
       toast: "",
       objectives: { shrines: [0, 0], camps: [0, 0], spirits: [0, 0], boss: false, lit: [], cleared: [] },
       results: null,
@@ -548,7 +554,11 @@ export class Explore {
 
     this.sprint(control);
     hero.target = this.nearestFoe(8);
-    if (control && dt > 0 && this.combat.control(hero, this.guard, hero.target) === "ult") this.say("HEAVEN PIERCE", "");
+    if (control && dt > 0) {
+      const move = this.combat.control(hero, this.guard, hero.target);
+      if (move === "ult") this.say("HEAVEN PIERCE", "");
+      else if (move === "ult2") this.say("LOTUS TEMPEST", "SEN BÃO");
+    }
     for (const f of this.foes) if (f.active) f.actor.target = hero;
     this.boss.target = hero;
     if (dt > 0) {
@@ -572,9 +582,9 @@ export class Explore {
     for (const f of this.foes) if (f.active) this.combat.resolve(f.actor);
     this.separate();
 
-    this.bolts.update(dt, this.targets(), (foe) => {
+    this.bolts.update(dt, this.targets(), (foe, _at, heavy) => {
       (foe as unknown as Monster).aggro = true;
-      this.combat.blast(this.hero, foe, BOLT_HIT);
+      this.combat.blast(this.hero, foe, heavy ? TEMPEST_BOLT : BOLT_HIT);
     });
     const got = this.orbs.update(dt || DT * 0.2, hero.pos);
     if (got) this.combat.gainEnergy(got * 4);
@@ -1071,6 +1081,7 @@ export class Explore {
     h.xp = this.xp;
     h.xpNext = xpNeed(this.level);
     h.ultReady = this.combat.energy >= ENERGY_MAX;
+    h.ult2Ready = this.combat.energy >= ENERGY_MAX * 2;
     h.objectives.shrines = [this.shrines.filter((s) => s.lit).length, this.shrines.length];
     h.objectives.camps = [this.camps.filter((c) => c.state === "cleared").length, this.camps.length];
     h.objectives.spirits = [this.spirits.filter((s) => s.found).length, this.spirits.length];
@@ -1078,7 +1089,7 @@ export class Explore {
     h.objectives.cleared = this.camps.map((c) => c.state === "cleared");
     if (this.phase === "title" && this.phaseT > 2.4 && h.banner) this.say("");
     // one-off calls clear themselves
-    if (h.banner === "HEAVEN PIERCE" && this.clock > this.bannerAt + 1.4) this.say("");
+    if ((h.banner === "HEAVEN PIERCE" || h.banner === "LOTUS TEMPEST") && this.clock > this.bannerAt + 1.6) this.say("");
     const key = JSON.stringify(h);
     if (key === this.hudKey) return;
     this.hudKey = key;
@@ -1120,6 +1131,33 @@ export class Explore {
 
   // ---------------------------------------------------------------- the ranged cast
   /** The flick reached its release: throw a crescent toward the locked-on foe, or the nearest one ahead. */
+  /**
+   * The lotus tempest at its height: a ring of ten crescents bursts out all
+   * round her, a second, turned half a step, a beat later; then she lands in
+   * a shock (the slam's ground wave, a pillar of light, the ground rings).
+   */
+  private tempest(me: Actor) {
+    const ring = (turn: number) => {
+      for (let k = 0; k < 10; k++) {
+        const a = turn + (k / 10) * Math.PI * 2;
+        this.bolts.fire(me.pos, V2.set(Math.cos(a), Math.sin(a), 0), null, true);
+      }
+      this.events.sound?.("wave");
+      this.camera.shake(0.25);
+    };
+    const yaw = Math.atan2(me.forward.y, me.forward.x);
+    ring(yaw);
+    this.after(0.3, () => ring(yaw + Math.PI / 10));
+    this.after(0.62, () => {
+      const at = V.set(me.pos.x, me.pos.y, me.groundZ);
+      this.fx.fire("slam", this.time, at, me.yaw, 0);
+      this.bolts.flare(at, me.groundZ);
+      this.combat.hitStop(5, 0.45);
+      this.events.sound?.("slam");
+      this.events.sound?.("clash");
+    });
+  }
+
   private throwBolt(me: Actor) {
     let target = me.target && me.target.alive ? me.target : null;
     if (!target) {
@@ -1309,7 +1347,7 @@ export class Explore {
     hero.hp = Math.max(hero.hp, hero.maxHp * 0.5);
     let near = Infinity;
     for (const m of this.monsters) if (m.alive) near = Math.min(near, m.pos.distanceTo(hero.pos));
-    if (this.combat.energy >= ENERGY_MAX) this.ult();
+    if (this.combat.energy >= ENERGY_MAX * 2) this.ult();
     else if (near < 3.4) this.attack();
     else if (near < 30) this.shoot();
     this.brawlT = near < 3.4 ? 0.28 : 0.7;

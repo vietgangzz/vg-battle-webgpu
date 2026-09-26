@@ -83,6 +83,7 @@ export function ExploreHud({
             xpNext={state.xpNext}
             points={points}
             onPortrait={onSkills}
+            ready2={state.ult2Ready}
           />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
           {/* the boss's bar takes the top of the screen; the tracker steps aside for the fight */}

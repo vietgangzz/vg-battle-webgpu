@@ -15,6 +15,8 @@ import type { FxDirector } from "./fx";
 import {
   BLOCKED,
   BOLT_HIT,
+  TEMPEST,
+  TEMPEST_BOLT,
   CAST,
   BRUTE_SLAM,
   FLINCH,
@@ -53,6 +55,8 @@ export interface CombatHost {
   pop(p: Pop): void;
   /** the ultimate's shatter landed at `at` */
   ultimate?(at: Actor): void;
+  /** the lotus tempest reached its height: its rings of sword light and its landing are the host's */
+  tempest?(me: Actor): void;
   /** a ranged cast reached its release: throw the bolt */
   shoot?(me: Actor): void;
 }
@@ -124,8 +128,15 @@ export class Combat {
   }
 
   gainEnergy(n: number) {
-    this.energy = Math.min(ENERGY_MAX, this.energy + n * this.heroBoost.energy);
+    this.energy = Math.min(this.energyCap, this.energy + n * this.heroBoost.energy);
   }
+
+  /**
+   * How far the energy can charge: one ultimate's worth on the stage roads;
+   * two in the valley, where a second full charge turns the ultimate into
+   * the lotus tempest.
+   */
+  energyCap = ENERGY_MAX;
 
   /**
    * The player's upgrades (the valley's skill ranks; all 1 on the stage
@@ -138,8 +149,9 @@ export class Combat {
   private boostOf(me: Actor, hit: HitSpec) {
     const b = this.heroBoost;
     if (hit === BOLT_HIT) return b.bolt;
+    if (hit === TEMPEST_BOLT) return b.lotus;
     const name = me.action?.def.name;
-    return name === "streak" ? b.streak : name === "pierce" ? b.lotus : b.blade;
+    return name === "streak" ? b.streak : name === "pierce" || name === "tempest" ? b.lotus : b.blade;
   }
 
   hitStop(frames24: number, shake: number) {
@@ -165,7 +177,14 @@ export class Combat {
 
     if (b.ult >= t && this.energy >= ENERGY_MAX && (free || recovering)) {
       b.ult = -1;
-      this.energy = 0;
+      // two full charges: the lotus tempest; one: the heaven pierce (a second charge is kept)
+      if (this.energy >= ENERGY_MAX * 2) {
+        this.energy -= ENERGY_MAX * 2;
+        this.startMove(hero, foe, TEMPEST);
+        this.host.sound("clash");
+        return "ult2";
+      }
+      this.energy -= ENERGY_MAX;
       this.startMove(hero, foe, SORA_MOVES.pierce);
       return "ult";
     }
@@ -262,6 +281,10 @@ export class Combat {
   /** Land `me`'s blows that are due. */
   resolve(me: Actor) {
     const a = me.action;
+    if (a?.def === TEMPEST && a.t >= TEMPEST.impact! && !a.done.has(-2)) {
+      a.done.add(-2);
+      this.host.tempest?.(me);
+    }
     if (a?.def === CAST && a.t >= CAST.impact! && !a.done.has(-1)) {
       a.done.add(-1);
       this.host.shoot?.(me);

@@ -19,7 +19,8 @@ const TURN = 3.2;
 const PIERCE = 3;
 const HEIGHT = 1.0;
 const WAKE = 5;
-const MAX = 8;
+/** thrown ones at a time, plus the lotus tempest's two rings */
+const MAX = 28;
 const BURSTS = 10;
 
 const LIME: [number, number, number] = [0.72, 1, 0.22];
@@ -77,6 +78,8 @@ interface Bolt {
   halo: THREE.Sprite;
   wake: THREE.Mesh[];
   trail: THREE.Vector3[];
+  /** one of the tempest's rings: larger, heavier, no wake (a ring of twenty would be a hundred draws) */
+  heavy: boolean;
 }
 
 /** A column of light rising from the feet (the level-up), soft at the sides and the top. */
@@ -144,7 +147,7 @@ export class Bolts {
         o.frustumCulled = false;
         this.group.add(o);
       }
-      this.bolts.push({ live: false, t: 0, pos: new THREE.Vector3(), dir: new THREE.Vector3(), target: null, struck: new Set(), body, halo: h, wake, trail: [] });
+      this.bolts.push({ live: false, t: 0, pos: new THREE.Vector3(), dir: new THREE.Vector3(), target: null, struck: new Set(), body, halo: h, wake, trail: [], heavy: false });
     }
     const bm = beamMaterial();
     const beam = new THREE.Sprite(bm.m);
@@ -163,11 +166,14 @@ export class Bolts {
     }
   }
 
-  /** Throw a bolt from `from` along `dir` (xy), bending toward `target` if given. */
-  fire(from: THREE.Vector3, dir: THREE.Vector3, target: Actor | null) {
+  /** Throw a bolt from `from` along `dir` (xy), bending toward `target` if given; `heavy`: one of the tempest's. */
+  fire(from: THREE.Vector3, dir: THREE.Vector3, target: Actor | null, heavy = false) {
     const b = this.bolts.find((x) => !x.live) ?? this.bolts[0];
     b.live = true;
     b.t = 0;
+    b.heavy = heavy;
+    b.body.scale.setScalar(heavy ? 1.45 : 1);
+    b.halo.scale.setScalar(heavy ? 3.0 : 2.6);
     b.pos.set(from.x, from.y, this.ground(from.x, from.y) + HEIGHT).addScaledVector(V.copy(dir).setZ(0).normalize(), 0.9);
     b.dir.copy(dir).setZ(0).normalize();
     b.target = target;
@@ -176,8 +182,8 @@ export class Bolts {
     this.place(b);
   }
 
-  /** Fly every bolt; `hit` is called once per foe a bolt passes through. */
-  update(dt: number, foes: Actor[], hit: (foe: Actor, at: THREE.Vector3) => void) {
+  /** Fly every bolt; `hit` is called once per foe a bolt passes through (with whether it is a tempest's). */
+  update(dt: number, foes: Actor[], hit: (foe: Actor, at: THREE.Vector3, heavy: boolean) => void) {
     for (const b of this.bolts) {
       if (!b.live) continue;
       b.t += dt;
@@ -209,9 +215,9 @@ export class Bolts {
         if (dx * dx + dy * dy > reach * reach) continue;
         if (Math.abs(f.pos.z + 0.9 * f.scale - b.pos.z) > 1.7 * Math.max(1, f.scale)) continue;
         b.struck.add(f);
-        hit(f, V.set(f.pos.x, f.pos.y, b.pos.z));
+        hit(f, V.set(f.pos.x, f.pos.y, b.pos.z), b.heavy);
         this.burst(b.pos, 1.6);
-        if (b.struck.size >= PIERCE) {
+        if (b.struck.size >= (b.heavy ? 5 : PIERCE)) {
           this.spend(b);
           break;
         }
@@ -295,7 +301,7 @@ export class Bolts {
     b.halo.visible = true;
     b.wake.forEach((w, k) => {
       const p = b.trail[(k + 1) * 2 - 1];
-      if (!p) {
+      if (!p || b.heavy) {
         w.visible = false;
         return;
       }

@@ -151,6 +151,43 @@ export const SORA_MOVES = {
   },
 } satisfies Record<string, MoveDef>;
 
+/**
+ * ULTIMATE II, on two full charges: the lotus tempest. She springs up turning
+ * twice round, the blade out; two rings of sword light burst from her in the
+ * air (the explore game throws them, see Combat.host.tempest), and she drives
+ * down into a shock that throws everyone near.
+ */
+const tempestKeys = (): Key[] => {
+  const keys: Key[] = [{ t: 0.12, pose: P.LEAP_CROUCH, ease: "out", at: fwd(0) }];
+  for (let i = 0; i <= 12; i++) {
+    const u = i / 12;
+    keys.push({ t: 0.2 + 0.72 * u, pose: P.spinPose(u, 70, 70 - 720), ease: i ? "lin" : "snap", at: fwd(0, 2.4 * Math.sin(Math.PI * Math.min(1, u * 1.15))) });
+  }
+  keys.push({ t: 0.98, pose: P.SLAM_UP, ease: "out", at: fwd(0, 0.9) });
+  keys.push({ t: 1.12, pose: P.SLAM, ease: "snap", at: fwd(0.2, 0) });
+  keys.push({ t: 1.5, pose: P.SLAM, ease: "hold", at: fwd(0.2, 0) });
+  keys.push({ t: 1.95, pose: P.READY, ease: "smooth", at: fwd(0.2, 0) });
+  return keys;
+};
+
+export const TEMPEST: MoveDef = {
+  name: "tempest",
+  keys: tempestKeys(),
+  impact: 0.5,
+  swing: "spin",
+  also: ["leap"],
+  hits: [
+    { range: 5.5, arc: 180, damage: 26, kind: "launch", clip: "spinHit", gain: 0 },
+    // the landing: 0.62 s after the first ring
+    { range: 9.5, arc: 180, damage: 48, kind: "heavy", clip: "waveHit", delay: 0.62, gain: 0 },
+  ],
+  ghosts: [0.1, 1.3],
+  invuln: [0, 1.95],
+};
+
+/** The tempest's rings of sword light (heavier than a thrown kiếm khí). */
+export const TEMPEST_BOLT: HitSpec = { range: 99, arc: 180, damage: 20, kind: "heavy", clip: "thrustHit", gain: 0 };
+
 /** SORA chains spin -> rising -> thrust. */
 /** A quick flick of the blade that throws a crescent of sword light (the bolt flies from the impact). */
 export const CAST: MoveDef = {

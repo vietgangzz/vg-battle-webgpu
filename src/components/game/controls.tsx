@@ -19,7 +19,7 @@ import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from "r
 
 import { SKILL_COOLDOWN } from "@/battle/game/combat";
 
-import { CrescentGlyph, type GlyphProps, GustGlyph, LotusGlyph, RiseGlyph, ShieldGlyph, SlashGlyph, SprintGlyph, StreakGlyph } from "./skill-icons";
+import { CrescentGlyph, type GlyphProps, GustGlyph, LotusGlyph, RiseGlyph, ShieldGlyph, SlashGlyph, SprintGlyph, StreakGlyph, TempestGlyph } from "./skill-icons";
 import { CRIMSON, INK, IVORY, LIME, UI_FONT } from "./theme";
 
 const ACircle = Animated.createAnimatedComponent(Circle);
@@ -98,6 +98,7 @@ export const Controls = memo(function Controls({
   energy,
   skill,
   ultReady,
+  ult2Ready = false,
   finishable,
   size: scale = 1,
   onPress,
@@ -114,6 +115,8 @@ export const Controls = memo(function Controls({
   stamina?: SharedValue<number>;
   winded?: SharedValue<number>;
   ultReady: boolean;
+  /** two full charges (the valley): the ultimate becomes the lotus tempest */
+  ult2Ready?: boolean;
   finishable: boolean;
   /** control size setting (0.85 / 1 / 1.15) */
   size?: number;
@@ -310,6 +313,7 @@ export const Controls = memo(function Controls({
             skill={b.id === "shoot" && shot ? shot : skill}
             winded={winded}
             ultReady={ultReady}
+            ult2Ready={ult2Ready}
           />
         ))}
       </Animated.View>
@@ -388,6 +392,8 @@ const ELEMENT: Record<ButtonId, { color: string; glyph: (p: GlyphProps) => React
   finish: { color: LIME, glyph: (p) => <LotusGlyph {...p} />, scale: 1 },
 };
 const DEEP = "#0A0F16";
+/** the second charge, and the lotus tempest it unlocks */
+const TEMPEST = "#FF5FD2";
 
 /**
  * One action button: a dark glass disc lit from inside by its element (a
@@ -402,14 +408,17 @@ const ActionButton = memo(function ActionButton({
   energy,
   skill,
   ultReady,
+  ult2Ready = false,
   winded,
 }: {
   b: Button & { x: number; y: number };
   down: boolean;
-  /** the ultimate's charge, or the sprint button's stamina */
+  /** the ultimate's charge (0..2 in the valley: a second full charge is the tempest), or the sprint button's stamina */
   energy: SharedValue<number>;
   skill: SharedValue<number>;
   ultReady: boolean;
+  /** two full charges: the button becomes the lotus tempest */
+  ult2Ready?: boolean;
   winded?: SharedValue<number>;
 }) {
   const r = b.r;
@@ -417,7 +426,9 @@ const ActionButton = memo(function ActionButton({
   const S = r * 2 + PAD * 2;
   const c = S / 2;
   const id = b.id;
-  const el = ELEMENT[id];
+  const tempest = id === "ult" && ult2Ready;
+  const base = ELEMENT[id];
+  const el = tempest ? { ...base, color: TEMPEST, glyph: (p: GlyphProps) => <TempestGlyph {...p} /> } : base;
   const color = el.color;
   const isSkill = id === "skill" || id === "shoot";
   const counts = id === "skill";
@@ -478,7 +489,11 @@ const ActionButton = memo(function ActionButton({
   // the ultimate's charge and the sprint's stamina, as rings round the rim
   const ring = r + 4.5;
   const ringC = 2 * Math.PI * ring;
-  const charge = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value) }));
+  const charge = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - Math.min(1, energy.value)) }));
+  // the second charge filling round a ready ultimate
+  const ring2 = ring + 3.5;
+  const ring2C = 2 * Math.PI * ring2;
+  const charge2 = useAnimatedProps(() => ({ strokeDashoffset: ring2C * (1 - Math.min(1, Math.max(0, energy.value - 1))) }));
   const breath = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value), strokeOpacity: winded && winded.value > 0 ? 0 : 1 }));
   const gasp = useAnimatedProps(() => ({ strokeDashoffset: ringC * (1 - energy.value), strokeOpacity: winded && winded.value > 0 ? 1 : 0 }));
 
@@ -543,6 +558,23 @@ const ActionButton = memo(function ActionButton({
           )}
           {(isUlt || isSprint) && (
             <Circle cx={c} cy={c} r={ring} fill="none" stroke={color} strokeOpacity={isUlt && ultReady ? 0 : 0.16} strokeWidth={3} />
+          )}
+          {isUlt && ultReady && !tempest && (
+            <>
+              <Circle cx={c} cy={c} r={ring2} fill="none" stroke={TEMPEST} strokeOpacity={0.18} strokeWidth={2.6} />
+              <ACircle
+                cx={c}
+                cy={c}
+                r={ring2}
+                fill="none"
+                stroke={TEMPEST}
+                strokeWidth={2.8}
+                strokeLinecap="round"
+                strokeDasharray={`${ring2C} ${ring2C}`}
+                animatedProps={charge2}
+                transform={`rotate(-90 ${c} ${c})`}
+              />
+            </>
           )}
           {isUlt && !ultReady && (
             <ACircle
@@ -612,6 +644,11 @@ const ActionButton = memo(function ActionButton({
         )}
         {finish && <Text style={styles.finishText}>FINISH</Text>}
       </Animated.View>
+      {tempest && (
+        <View style={[styles.x2, { right: PAD - 6, top: PAD - 6 }]}>
+          <Text style={styles.x2Text}>×2</Text>
+        </View>
+      )}
       {isSkill && (
         <Animated.View style={[StyleSheet.absoluteFill, pingStyle]}>
           <Svg width={S} height={S}>
@@ -628,5 +665,18 @@ const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center" },
   flare: { position: "absolute", opacity: 0 },
   seconds: { color: IVORY, fontFamily: UI_FONT, textAlign: "center", padding: 0, textShadowColor: "rgba(0,0,0,0.8)", textShadowRadius: 5, textShadowOffset: { width: 0, height: 1 } },
+  x2: {
+    position: "absolute",
+    paddingHorizontal: 5,
+    height: 18,
+    minWidth: 24,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: TEMPEST,
+    borderWidth: 1.5,
+    borderColor: "#FFE3F7",
+  },
+  x2Text: { color: DEEP, fontFamily: UI_FONT, fontSize: 11 },
   finishText: { position: "absolute", alignSelf: "center", bottom: 10, color: DEEP, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 2 },
 });

@@ -459,6 +459,7 @@ export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean
               energy={energy}
               skill={skill}
               ultReady={world.ultReady}
+              ult2Ready={world.ult2Ready}
               finishable={false}
               size={save.settings.buttons}
               onPress={buttonTap}

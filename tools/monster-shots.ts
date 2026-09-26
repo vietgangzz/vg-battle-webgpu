@@ -57,7 +57,9 @@ const from = new THREE.Vector3(pack.x - 20, pack.y - 6, 0);
 hero.place(from, 0);
 mkdirSync(out, { recursive: true });
 let n = 0;
-const shots = [3.2, 5.0, 6.2, 6.5, 6.8, 8.5, 10.5, 12.5];
+// --tempest: the lotus tempest in the middle of the pack (two full charges at 9 s), shot through its arc
+const tempest = process.argv.includes("--tempest");
+const shots = tempest ? [9.3, 9.55, 9.75, 9.95, 10.2, 10.45] : [3.2, 5.0, 6.2, 6.5, 6.8, 8.5, 10.5, 12.5];
 let t = 0;
 for (; t <= 13; t += 1 / 60) {
   const target = hero.target;
@@ -71,7 +73,10 @@ for (; t <= 13; t += 1 / 60) {
   const wy = (dy / d) * go;
   game.setStick(wx * Math.sin(yaw) - wy * Math.cos(yaw), wx * Math.cos(yaw) + wy * Math.sin(yaw));
   if (t > 6 && t < 6.1) game.shoot();
-  if (t > 8 && target && hero.pos.distanceTo(target.pos) < 3.2 && Math.floor(t * 60) % 20 === 0) game.attack();
+  if (tempest && t > 9 && t < 9.02) {
+    (game as unknown as { combat: { energy: number } }).combat.energy = 200;
+    game.ult();
+  } else if (t > 8 && target && hero.pos.distanceTo(target.pos) < 3.2 && Math.floor(t * 60) % 20 === 0 && !(tempest && t > 8.8)) game.attack();
   game.frame(t * 1000);
   if (Math.floor(t * 60) % 60 === 0) {
     const ms = (game as unknown as { monsters: { kind: string; pack: number; state: string; aggro: boolean; hp: number; pos: { x: number; y: number }; alive: boolean }[] }).monsters.filter((m) => m.pack === packIndex);

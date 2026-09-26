@@ -192,5 +192,19 @@ if (crowd) {
   console.log(`crowd peak ${peak} monsters alive at once`);
   if (process.argv.includes("--census")) census();
 }
+// --tempest: the lotus tempest's cost, cast into a crowd
+if (process.argv.includes("--tempest")) {
+  const c = (game as unknown as { combat: { energy: number } }).combat;
+  let k = 0;
+  await measure("tempest", 6, (i) => {
+    if (i % 150 === 5) {
+      c.energy = 200;
+      game.ult();
+      k++;
+    }
+    if (i === 30 && process.argv.includes("--census")) census();
+  });
+  console.log(`tempests cast ${k}`);
+}
 console.log(`pops ${pops}, level ${game.level}`);
 process.exit(0);

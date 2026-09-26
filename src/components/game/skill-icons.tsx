@@ -152,3 +152,22 @@ export function SprintGlyph({ size, color, ink }: GlyphProps) {
     </Svg>
   );
 }
+
+/** ULTIMATE II (Sen Bão, the lotus tempest): three blades of light whirling round a lotus. */
+export function TempestGlyph({ size, color, ink }: GlyphProps) {
+  const id = useGid();
+  const blade = "M32 4 C47 4 60 16 60 31 C55 21 45 13 31 11 Z";
+  return (
+    <Svg width={size} height={size} viewBox="0 0 64 64">
+      <Defs>
+        <Paint id={id} color={color} ink={ink} />
+      </Defs>
+      {[0, 120, 240].map((a) => (
+        <Path key={a} d={blade} fill={`url(#${id})`} transform={`rotate(${a} 32 32)`} />
+      ))}
+      <Path d="M32 19 C37 25 37 33 32 40 C27 33 27 25 32 19 Z" fill={ink ?? "#FFFFFF"} />
+      <Path d="M32 41 C26 39 21 34 20 28 C26 29 30 34 32 41 Z M32 41 C38 39 43 34 44 28 C38 29 34 34 32 41 Z" fill={ink ?? color} opacity={0.85} />
+      <Circle cx={32} cy={46} r={2.2} fill={ink ?? "#FFFFFF"} opacity={0.9} />
+    </Svg>
+  );
+}

@@ -191,6 +191,7 @@ export const PlayerPanel = memo(function PlayerPanel({
   xpNext,
   points,
   onPortrait,
+  ready2 = false,
 }: {
   hp: number;
   max: number;
@@ -204,6 +205,8 @@ export const PlayerPanel = memo(function PlayerPanel({
   xpNext?: number;
   /** skill points waiting to be spent (a badge on the portrait) */
   points?: number;
+  /** two full charges (the lotus tempest) */
+  ready2?: boolean;
   /** the portrait opens the skills */
   onPortrait?: () => void;
 }) {
@@ -216,7 +219,9 @@ export const PlayerPanel = memo(function PlayerPanel({
   }, [hp, hurt]);
   const shake = useAnimatedStyle(() => ({ transform: [{ translateX: Math.sin(hurt.value * 40) * 4 * hurt.value }] }));
   const flash = useAnimatedStyle(() => ({ opacity: hurt.value * 0.8 }));
-  const energyStyle = useAnimatedStyle(() => ({ width: `${Math.round(energy.value * 100)}%` }));
+  const energyStyle = useAnimatedStyle(() => ({ width: `${Math.round(Math.min(1, energy.value) * 100)}%` }));
+  // the second charge (the valley's lotus tempest), laid over the first
+  const energy2Style = useAnimatedStyle(() => ({ width: `${Math.round(Math.min(1, Math.max(0, energy.value - 1)) * 100)}%` }));
   const glow = useSharedValue(0);
   useEffect(() => {
     glow.value = ready ? withRepeat(withSequence(withTiming(1, { duration: 520 }), withTiming(0.2, { duration: 520 })), -1) : withTiming(0);
@@ -279,11 +284,12 @@ export const PlayerPanel = memo(function PlayerPanel({
         <SlantBar frac={frac} color={frac > 0.3 ? LIME : ORANGE} width={188} height={12} />
         <View style={styles.energyTrack}>
           <Animated.View style={[styles.energyFill, energyStyle, { backgroundColor: ready ? GOLD : ORANGE }]} />
+          <Animated.View style={[styles.energyFill, energy2Style, { backgroundColor: TEMPEST_PINK }]} />
           {Array.from({ length: 4 }, (_, i) => (
             <View key={i} style={[styles.energyTick, { left: `${(i + 1) * 20}%` }]} />
           ))}
         </View>
-        <Animated.Text style={[styles.ready, readyStyle]}>ULTIMATE READY</Animated.Text>
+        <Animated.Text style={[styles.ready, readyStyle, ready2 && { color: TEMPEST_PINK }]}>{ready2 ? "LOTUS TEMPEST READY ×2" : "ULTIMATE READY"}</Animated.Text>
       </View>
     </Animated.View>
   );
@@ -452,6 +458,9 @@ export function Slash({ width = 220, color = LIME }: { width?: number; color?: s
     </Svg>
   );
 }
+
+/** the second charge's colour (the lotus tempest) */
+const TEMPEST_PINK = "#FF5FD2";
 
 /** a tight dark edge for small text over a bright scene (the soft glow blurs it away) */
 const crisp = { textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } };
