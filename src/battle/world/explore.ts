@@ -1168,9 +1168,9 @@ export class Explore {
     this.after(0.3, () => ring(yaw + Math.PI / 10));
     this.after(0.62, () => {
       const at = V.set(me.pos.x, me.pos.y, me.groundZ);
-      this.bolts.flare(at, me.groundZ, true);
-      this.bolts.groundRing(V.set(at.x, at.y, me.groundZ), 11, true);
-      this.lotus.bloom(at, me.groundZ);
+      this.bolts.flare(at, me.groundZ, true, false);
+      // (the lotus's own sigil carries the landing: the shockwave ring would only wash it out)
+      this.lotus.bloom(at, (x, y) => this.world.ground.at(x, y));
       this.combat.hitStop(5, 0.45);
       this.events.sound?.("slam");
       this.events.sound?.("clash");

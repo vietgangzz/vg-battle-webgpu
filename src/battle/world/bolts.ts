@@ -304,12 +304,14 @@ export class Bolts {
   }
 
   /** The level-up: a pillar of light and rings of it spreading from the feet. */
-  flare(at: THREE.Vector3, ground: number, pink = false) {
+  /** `rings`: the rings of light at its foot (off when something else, the lotus, takes the ground) */
+  flare(at: THREE.Vector3, ground: number, pink = false, rings = true) {
     const b = this.beam;
     b.t = 0;
     (b.tint.value as THREE.Color).setRGB(...(pink ? LOTUS_PINK : LIME));
     b.sprite.position.set(at.x, at.y, ground);
     b.sprite.visible = true;
+    if (!rings) return;
     this.groundRing(V.set(at.x, at.y, ground), 7, pink);
     this.burst(V.set(at.x, at.y, ground + 1.2), 4, pink);
   }

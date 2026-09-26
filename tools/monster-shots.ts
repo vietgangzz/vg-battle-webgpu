@@ -74,7 +74,7 @@ mkdirSync(out, { recursive: true });
 let n = 0;
 // --tempest: the lotus tempest in the middle of the pack (two full charges at 9 s), shot through its arc
 const tempest = process.argv.includes("--tempest");
-const shots = tempest ? [9.35, 9.6, 9.8, 10.0, 10.3, 10.9] : [3.2, 5.0, 6.2, 6.5, 6.8, 8.5, 10.5, 12.5];
+const shots = tempest ? [10.15, 10.4, 10.7, 11.0, 11.5, 12.2] : [3.2, 5.0, 6.2, 6.5, 6.8, 8.5, 10.5, 12.5];
 let t = 0;
 for (; t <= 13; t += 1 / 60) {
   const target = hero.target;
