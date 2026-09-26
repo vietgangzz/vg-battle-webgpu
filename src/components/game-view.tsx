@@ -14,6 +14,7 @@ import type { WorldManifest } from "@/battle/world/data";
 import { Explore, type ExploreHud as ExploreHudState } from "@/battle/world/explore";
 import { loadWorld } from "@/battle/world/load-world";
 import { loadCreatures } from "@/battle/world/load-creatures";
+import { pointsFree, RANK_MAX, type SkillId } from "@/battle/world/skills";
 import { Controls } from "@/components/game/controls";
 import { ExploreHud } from "@/components/game/explore-hud";
 import { Hud } from "@/components/game/hud";
@@ -21,6 +22,7 @@ import { MainMenu, SettingsSheet, StageSelect } from "@/components/game/menu";
 import { DefeatCard, PauseCard, ResultsCard, ValleyCard } from "@/components/game/overlays";
 import { useSave } from "@/components/game/save";
 import { useSfx } from "@/components/game/sfx";
+import { SkillSheet } from "@/components/game/skills-sheet";
 
 const SOUNDTRACK = require("../../assets/film/sfx.m4a");
 /** the film behind the menu: the standoff, back and forth (frames 16 .. 58) */
@@ -129,7 +131,8 @@ export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean
   const curtain = useSharedValue(0);
   const soundtrack = useAudioPlayer(SOUNDTRACK);
   const sfx = useSfx();
-  const { save, record, setSettings, setHero } = useSave();
+  const { save, record, setSettings, setHero, setRanks } = useSave();
+  const [skillsOpen, setSkillsOpen] = useState(false);
   const heroSave = useRef(save.hero);
   const settings = useRef(save.settings);
   useEffect(() => {
@@ -311,6 +314,7 @@ export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean
           },
         }, creatures);
         ex.setProgress(heroSave.current.level, heroSave.current.xp);
+        ex.setRanks(heroSave.current.ranks);
         ex.world.group.visible = true;
         await p.renderer.compileAsync(ex.world.group, p.fs.camera, p.fs.scene);
         await ex.warm((o) => p.renderer.compileAsync(o, p.fs.camera, p.fs.scene));
@@ -365,6 +369,29 @@ export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean
     if (settings.current.haptics) void Haptics.selectionAsync();
   }, []);
   const pause = useCallback(() => setPaused(true), []);
+  // the skills: the game waits while they are open
+  const openSkills = useCallback(() => {
+    paused.current = true;
+    setSkillsOpen(true);
+  }, []);
+  const closeSkills = useCallback(() => {
+    setSkillsOpen(false);
+    paused.current = pausedView;
+  }, [pausedView]);
+  const ranks = save.hero.ranks;
+  const points = pointsFree(save.hero.level, ranks);
+  const spend = useCallback(
+    (id: SkillId) => {
+      if (pointsFree(heroSave.current.level, heroSave.current.ranks) <= 0 || heroSave.current.ranks[id] >= RANK_MAX) return;
+      const next = { ...heroSave.current.ranks, [id]: heroSave.current.ranks[id] + 1 };
+      heroSave.current = { ...heroSave.current, ranks: next };
+      setRanks(next);
+      explore.current?.setRanks(next);
+      if (settings.current.sfx) sfx.play("block");
+      if (settings.current.haptics) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    },
+    [setRanks, sfx],
+  );
 
   // ---- dev: fold / unfold the simulator (it has one display) and reach the game from the debugger
   useEffect(() => {
@@ -449,10 +476,15 @@ export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean
             onPause={pause}
             fps={fps}
             waypoint={waypoint}
+            points={points}
+            onSkills={openSkills}
           />
           {world.phase === "results" && world.results && <ValleyCard results={world.results} onAgain={() => startExplore(true)} onMenu={() => toMenu()} />}
           {world.phase === "defeat" && <DefeatCard onRetry={() => startExplore(false)} onRestart={() => startExplore(true)} onMenu={() => toMenu()} />}
-          {pausedView && <PauseCard onResume={() => setPaused(false)} onRestart={() => startExplore(true)} onSettings={() => setSettingsOpen(true)} onMenu={() => toMenu()} />}
+          {pausedView && !skillsOpen && (
+            <PauseCard onResume={() => setPaused(false)} onRestart={() => startExplore(true)} onSettings={() => setSettingsOpen(true)} onMenu={() => toMenu()} onSkills={openSkills} />
+          )}
+          {skillsOpen && <SkillSheet ranks={ranks} points={points} level={save.hero.level} onSpend={spend} onClose={closeSkills} />}
         </>
       )}
       {settingsOpen && <SettingsSheet settings={save.settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />}

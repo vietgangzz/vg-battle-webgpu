@@ -33,6 +33,8 @@ export function ExploreHud({
   onPause,
   fps,
   waypoint,
+  points,
+  onSkills,
 }: {
   state: HudState;
   energy: SharedValue<number>;
@@ -46,6 +48,10 @@ export function ExploreHud({
   fps?: string;
   /** where the current objective is (see ExploreMeters.waypoint) */
   waypoint: SharedValue<number[]>;
+  /** skill points waiting to be spent */
+  points: number;
+  /** open the skills (the portrait) */
+  onSkills: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -75,6 +81,8 @@ export function ExploreHud({
             level={state.level}
             xp={state.xp}
             xpNext={state.xpNext}
+            points={points}
+            onPortrait={onSkills}
           />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
           {/* the boss's bar takes the top of the screen; the tracker steps aside for the fight */}

@@ -14,6 +14,7 @@ import type { Orders } from "./ai";
 import type { FxDirector } from "./fx";
 import {
   BLOCKED,
+  BOLT_HIT,
   CAST,
   BRUTE_SLAM,
   FLINCH,
@@ -123,7 +124,22 @@ export class Combat {
   }
 
   gainEnergy(n: number) {
-    this.energy = Math.min(ENERGY_MAX, this.energy + n);
+    this.energy = Math.min(ENERGY_MAX, this.energy + n * this.heroBoost.energy);
+  }
+
+  /**
+   * The player's upgrades (the valley's skill ranks; all 1 on the stage
+   * roads): damage by kind of blow, the skill and kiếm khí cooldowns, and how
+   * fast the ultimate charges.
+   */
+  heroBoost = { blade: 1, streak: 1, bolt: 1, lotus: 1, skillCooldown: 1, shootCooldown: 1, energy: 1 };
+
+  /** A blow's upgrade: kiếm khí, the streak, the ultimate, or the blade's combo. */
+  private boostOf(me: Actor, hit: HitSpec) {
+    const b = this.heroBoost;
+    if (hit === BOLT_HIT) return b.bolt;
+    const name = me.action?.def.name;
+    return name === "streak" ? b.streak : name === "pierce" ? b.lotus : b.blade;
   }
 
   hitStop(frames24: number, shake: number) {
@@ -155,14 +171,14 @@ export class Combat {
     }
     if (b.skill >= t && this.skillCooldown <= 0 && (free || recovering)) {
       b.skill = -1;
-      this.skillCooldown = SKILL_COOLDOWN;
+      this.skillCooldown = SKILL_COOLDOWN * this.heroBoost.skillCooldown;
       const dir = hero.wish.lengthSq() > 0.04 ? V.set(hero.wish.x, hero.wish.y, 0) : null;
       this.startMove(hero, dir ? null : foe, SORA_MOVES.streak, dir?.clone());
       return "skill";
     }
     if (b.shoot >= t && this.shootCooldown <= 0 && (free || recovering) && !hero.airborne) {
       b.shoot = -1;
-      this.shootCooldown = SHOOT_COOLDOWN;
+      this.shootCooldown = SHOOT_COOLDOWN * this.heroBoost.shootCooldown;
       // square up to the target (or keep facing where she runs), then flick the blade
       if (foe) hero.yaw = yawOf(V.subVectors(foe.pos, hero.pos).setZ(0));
       else if (hero.wish.lengthSq() > 0.04) hero.yaw = yawOf(V.set(hero.wish.x, hero.wish.y, 0));
@@ -288,7 +304,7 @@ export class Combat {
     const facing = Math.abs(((foe.yaw - faceYaw + 540) % 360) - 180) < 100;
     const heroHit = foe.kind === "hero";
     // bigger fighters hit harder
-    const damage = hit.damage * me.power * (me.kind === "captain" ? 1.25 : 1);
+    const damage = hit.damage * me.power * (me.kind === "captain" ? 1.25 : me.kind === "hero" ? this.boostOf(me, hit) : 1);
     const at = V2.set(foe.pos.x, foe.pos.y, foe.groundZ);
 
     if (foe.guardHeld && facing && !foe.airborne) {

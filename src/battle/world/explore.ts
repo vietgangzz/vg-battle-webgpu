@@ -33,6 +33,7 @@ import { DUSK, MORNING, mixLook } from "./look";
 import { Guide, type GroundQuery } from "./guide";
 import { FOCUS, LAMP, SHADOWS } from "./shaders";
 import { OrbitCamera } from "./orbit";
+import { boosts, cleanRanks, NO_RANKS, pointsEarned, type Ranks } from "./skills";
 import { NO_REFLECT, World } from "./world";
 
 export type ExplorePhase = "title" | "roam" | "camp" | "bossIntro" | "boss" | "clear" | "results" | "defeat";
@@ -583,8 +584,8 @@ export class Explore {
     if (this.hud.toast && this.clock > this.toastUntil) this.hud.toast = "";
     const c = this.combat;
     this.meters.energy = c.energy / ENERGY_MAX;
-    this.meters.skill = c.skillCooldown / SKILL_COOLDOWN;
-    this.meters.shot = c.shootCooldown / SHOOT_COOLDOWN;
+    this.meters.skill = c.skillCooldown / (SKILL_COOLDOWN * c.heroBoost.skillCooldown);
+    this.meters.shot = c.shootCooldown / (SHOOT_COOLDOWN * c.heroBoost.shootCooldown);
     this.meters.stamina = this.stamina / 100;
     this.meters.winded = this.winded ? 1 : 0;
     this.meters.combo = c.combo > 1 ? Math.max(0, c.comboT / COMBO_WINDOW) : 0;
@@ -1095,7 +1096,7 @@ export class Explore {
     const moving = control && hero.wish.length() > 0.3 && !hero.busy && !hero.airborne;
     const sprinting = this.sprintHeld && moving && !this.winded && this.stamina > 0;
     if (sprinting) {
-      this.stamina = Math.max(0, this.stamina - 20 * DT);
+      this.stamina = Math.max(0, this.stamina - 20 * this.boost.drain * DT);
       this.rested = 0;
       if (this.stamina <= 0) {
         this.winded = true;
@@ -1110,7 +1111,7 @@ export class Explore {
     } else {
       this.sprintFx = 0;
       this.rested += DT;
-      if (this.rested > 0.6) this.stamina = Math.min(100, this.stamina + 32 * DT);
+      if (this.rested > 0.6) this.stamina = Math.min(100, this.stamina + 32 * this.boost.regen * DT);
       if (this.winded && this.stamina >= 30) this.winded = false;
     }
     hero.speedMul = !control ? 1 : sprinting ? 2.0 : 1.18;
@@ -1347,6 +1348,22 @@ export class Explore {
     a.power = 1 + might * (level - 1);
   }
 
+  // ---------------------------------------------------------------- skills
+  private ranks: Ranks = { ...NO_RANKS };
+  private boost = boosts(NO_RANKS);
+
+  /** SORA's skill ranks (from the save, or just spent): their boosts take hold at once. */
+  setRanks(r: Ranks) {
+    this.ranks = cleanRanks(r);
+    this.boost = boosts(this.ranks);
+    const b = this.boost;
+    this.combat.heroBoost = { blade: b.blade, streak: b.streak, bolt: b.bolt, lotus: b.lotus, skillCooldown: b.skillCooldown, shootCooldown: b.shootCooldown, energy: b.energy };
+    // new vitality fills in at once
+    const before = this.hero.maxHp;
+    this.applyLevel();
+    if (this.hero.hp > 0) this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + Math.max(0, this.hero.maxHp - before));
+  }
+
   // ---------------------------------------------------------------- experience
   /** Where SORA's journey stands (from the save). */
   setProgress(level: number, xp: number) {
@@ -1359,7 +1376,7 @@ export class Explore {
     const hero = this.hero;
     const L = this.level;
     hero.level = L;
-    hero.maxHp = 120 + 14 * (L - 1);
+    hero.maxHp = 120 + 14 * (L - 1) + this.boost.hp;
     hero.power = 1 + 0.1 * (L - 1);
     hero.hp = Math.min(hero.hp, hero.maxHp);
   }
@@ -1387,7 +1404,8 @@ export class Explore {
     this.fx.fire("dashSora", this.time, V.set(hero.pos.x, hero.pos.y, hero.groundZ), hero.yaw, 0.05);
     this.combat.gainEnergy(25);
     this.events.sound?.("clash");
-    this.say("LEVEL UP", `Lv ${this.level} · +HP +ATK`);
+    const points = pointsEarned(this.level) - pointsEarned(this.level - 1);
+    this.say("LEVEL UP", `Lv ${this.level} · +${points} skill point${points > 1 ? "s" : ""} · tap your portrait`);
     this.after(2.2, () => {
       if (this.hud.banner === "LEVEL UP") this.say("");
     });

@@ -2,6 +2,7 @@ import { File, Paths } from "expo-file-system";
 import { useCallback, useState } from "react";
 
 import type { Results } from "@/battle/game/adventure";
+import { cleanRanks, NO_RANKS, type Ranks } from "@/battle/world/skills";
 import { STAGES } from "@/battle/game/stage";
 
 export interface Settings {
@@ -16,12 +17,12 @@ export interface Save {
   unlocked: number;
   best: Record<string, Results["rank"]>;
   settings: Settings;
-  /** SORA's level in the valley and her experience toward the next */
-  hero: { level: number; xp: number };
+  /** SORA's level in the valley, her experience toward the next, and her skill ranks */
+  hero: { level: number; xp: number; ranks: Ranks };
 }
 
 const RANKS = ["C", "B", "A", "S"];
-const EMPTY: Save = { unlocked: 0, best: {}, settings: { sfx: true, haptics: true, buttons: 1 }, hero: { level: 1, xp: 0 } };
+const EMPTY: Save = { unlocked: 0, best: {}, settings: { sfx: true, haptics: true, buttons: 1 }, hero: { level: 1, xp: 0, ranks: NO_RANKS } };
 
 const file = () => new File(Paths.document, "little-giant-save.json");
 
@@ -30,7 +31,7 @@ function load(): Save {
     const f = file();
     if (!f.exists) return EMPTY;
     const s = JSON.parse(f.textSync()) as Partial<Save>;
-    return { ...EMPTY, ...s, settings: { ...EMPTY.settings, ...s.settings }, hero: { ...EMPTY.hero, ...s.hero } };
+    return { ...EMPTY, ...s, settings: { ...EMPTY.settings, ...s.settings }, hero: { ...EMPTY.hero, ...s.hero, ranks: cleanRanks(s.hero?.ranks) } };
   } catch {
     return EMPTY;
   }
@@ -73,7 +74,10 @@ export function useSave() {
   const setSettings = useCallback((p: Partial<Settings>) => update((s) => ({ ...s, settings: { ...s.settings, ...p } })), [update]);
 
   /** SORA's level and experience (kept as she earns it). */
-  const setHero = useCallback((level: number, xp: number) => update((s) => ({ ...s, hero: { level, xp } })), [update]);
+  const setHero = useCallback((level: number, xp: number) => update((s) => ({ ...s, hero: { ...s.hero, level, xp } })), [update]);
 
-  return { save, record, setSettings, setHero };
+  /** SORA's skill ranks (as she spends her points). */
+  const setRanks = useCallback((ranks: Ranks) => update((s) => ({ ...s, hero: { ...s.hero, ranks } })), [update]);
+
+  return { save, record, setSettings, setHero, setRanks };
 }

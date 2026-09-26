@@ -189,6 +189,8 @@ export const PlayerPanel = memo(function PlayerPanel({
   level,
   xp,
   xpNext,
+  points,
+  onPortrait,
 }: {
   hp: number;
   max: number;
@@ -200,6 +202,10 @@ export const PlayerPanel = memo(function PlayerPanel({
   level?: number;
   xp?: number;
   xpNext?: number;
+  /** skill points waiting to be spent (a badge on the portrait) */
+  points?: number;
+  /** the portrait opens the skills */
+  onPortrait?: () => void;
 }) {
   const frac = Math.max(0, hp / max);
   const hurt = useSharedValue(0);
@@ -218,8 +224,8 @@ export const PlayerPanel = memo(function PlayerPanel({
   const readyStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   return (
-    <Animated.View style={[styles.panel, { top, left, pointerEvents: "none" }, shake]}>
-      <View style={styles.medallion}>
+    <Animated.View style={[styles.panel, { top, left, pointerEvents: onPortrait ? "box-none" : "none" }, shake]}>
+      <Pressable onPress={onPortrait} disabled={!onPortrait} hitSlop={8} style={styles.medallion}>
         <Svg width={70} height={70} style={StyleSheet.absoluteFill}>
           <Defs>
             <LinearGradient id="medal" x1="0" y1="0" x2="0" y2="1">
@@ -259,8 +265,9 @@ export const PlayerPanel = memo(function PlayerPanel({
             <Text style={styles.levelChipText}>Lv {level}</Text>
           </View>
         )}
-      </View>
-      <View style={styles.bars}>
+        {!!points && <PointsBadge n={points} />}
+      </Pressable>
+      <View style={[styles.bars, { pointerEvents: "none" }]}>
         <View style={styles.nameRow}>
           <Text style={styles.name}>SORA</Text>
           <Text style={styles.hpText}>
@@ -277,6 +284,20 @@ export const PlayerPanel = memo(function PlayerPanel({
         </View>
         <Animated.Text style={[styles.ready, readyStyle]}>ULTIMATE READY</Animated.Text>
       </View>
+    </Animated.View>
+  );
+});
+
+/** Skill points waiting: a gold "+N" on the portrait, beating gently. */
+const PointsBadge = memo(function PointsBadge({ n }: { n: number }) {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.value = withRepeat(withSequence(withTiming(1, { duration: 620 }), withTiming(0, { duration: 620 })), -1);
+  }, [p]);
+  const beat = useAnimatedStyle(() => ({ transform: [{ scale: 1 + p.value * 0.14 }], shadowOpacity: 0.45 + p.value * 0.5 }));
+  return (
+    <Animated.View style={[styles.pointsBadge, beat]}>
+      <Text style={styles.pointsText}>+{n}</Text>
     </Animated.View>
   );
 });
@@ -499,6 +520,24 @@ const styles = StyleSheet.create({
     borderColor: GOLD,
   },
   levelChipText: { color: GOLD, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 1 },
+  pointsBadge: {
+    position: "absolute",
+    top: -2,
+    right: -8,
+    minWidth: 24,
+    height: 22,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GOLD,
+    borderWidth: 1.5,
+    borderColor: "#FFF3C4",
+    shadowColor: GOLD,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  pointsText: { color: INK, fontFamily: UI_FONT, fontSize: 11 },
   medalFlash: { position: "absolute", width: 58, height: 58, borderRadius: 29, backgroundColor: CRIMSON },
   levelBadge: {
     position: "absolute",

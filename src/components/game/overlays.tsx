@@ -153,7 +153,20 @@ export function DefeatCard({ onRetry, onRestart, onMenu }: { onRetry: () => void
   );
 }
 
-export function PauseCard({ onResume, onRestart, onSettings, onMenu }: { onResume: () => void; onRestart: () => void; onSettings: () => void; onMenu: () => void }) {
+export function PauseCard({
+  onResume,
+  onRestart,
+  onSettings,
+  onMenu,
+  onSkills,
+}: {
+  onResume: () => void;
+  onRestart: () => void;
+  onSettings: () => void;
+  onMenu: () => void;
+  /** the valley's skills (the stage roads have none) */
+  onSkills?: () => void;
+}) {
   return (
     <Scrim>
       <View style={styles.card}>
@@ -179,6 +192,7 @@ export function PauseCard({ onResume, onRestart, onSettings, onMenu }: { onResum
           <Button label="RESTART" onPress={onRestart} />
         </View>
         <View style={styles.actionsSmall}>
+          {onSkills && <Button label="SKILLS" onPress={onSkills} />}
           <Button label="SETTINGS" onPress={onSettings} />
           <Button label="MENU" onPress={onMenu} />
         </View>
