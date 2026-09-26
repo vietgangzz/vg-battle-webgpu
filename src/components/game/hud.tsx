@@ -252,7 +252,7 @@ export const PlayerPanel = memo(function PlayerPanel({
             </>
           ) : null}
         </Svg>
-        <LittleGiant size={40} />
+        <LittleGiant size={46} />
         <Animated.View style={[styles.medalFlash, flash]} />
         {level !== undefined && (
           <View style={styles.levelChip}>
@@ -321,7 +321,7 @@ export const BossBar = memo(function BossBar({ hp, max, name, title, top }: { hp
   return (
     <Animated.View style={[styles.boss, { top, pointerEvents: "none" }, style]}>
       <View style={styles.bossHead}>
-        <LittleGiant size={22} body="#1B1F24" eyes={CRIMSON} />
+        <LittleGiant size={22} body="#1B1F24" eyes={CRIMSON} band={CRIMSON} />
         <Text style={styles.bossName}>{name}</Text>
         <Text style={styles.bossTitle}>{title}</Text>
       </View>

@@ -127,15 +127,30 @@ const EYES = [
   "M755.5 455.5L783 433L785 434L787 435L787.5 437Q788 439 789 453.5Q790 468 788.5 476Q787 484 784.5 490.5Q782 497 776.5 504Q771 511 767 513Q763 515 757 515Q751 515 747.5 513.5Q744 512 743 510.5Q742 509 739 506.5Q736 504 733.5 499.5Q731 495 729.5 490.5Q728 486 728 482L728 478L755.5 455.5Z",
 ];
 
-/** SORA (lime) or KAGE (ink with crimson eyes) as the flat brand mark. */
-export function LittleGiant({ size = 40, body = LIME, eyes = INK, band }: { size?: number; body?: string; eyes?: string; band?: string }) {
+/**
+ * SORA (lime) or KAGE (ink with crimson eyes) as the flat brand mark, with
+ * the headband she wears in the game: a bold strip bowed round the brow just
+ * over the eyes, a glint along it, and its two tails flying from the knot.
+ * `band={null}` leaves it off.
+ */
+export function LittleGiant({ size = 40, body = LIME, eyes = INK, band = BAND_INK }: { size?: number; body?: string; eyes?: string; band?: string | null }) {
   return (
-    <Svg width={size} height={size} viewBox="396 258 484 434">
+    <Svg width={size} height={size} viewBox={band ? "352 258 528 434" : "396 258 484 434"}>
       <Path d={BODY} fill={body} />
-      {band && <Rect x={400} y={380} width={480} height={26} fill={band} opacity={0.95} transform="rotate(4 640 393)" />}
+      {band && (
+        <>
+          <Path d="M440 390 C410 380 384 362 358 364 C370 378 396 396 438 404 Z" fill={band} />
+          <Path d="M438 404 C412 424 392 450 362 456 C380 436 404 412 436 396 Z" fill={band} />
+          <Path d="M446 378 Q640 402 830 370 Q846 390 834 410 Q640 442 440 420 Q430 398 446 378 Z" fill={band} />
+          <Path d="M472 390 Q640 412 812 382" stroke="#FFFFFF" strokeOpacity={0.3} strokeWidth={5} strokeLinecap="round" fill="none" />
+          <Circle cx={442} cy={399} r={11} fill={band} />
+        </>
+      )}
       {EYES.map((d) => (
         <Path key={d.slice(0, 12)} d={d} fill={eyes} />
       ))}
     </Svg>
   );
 }
+
+const BAND_INK = "#101214";

@@ -140,7 +140,7 @@ export function DefeatCard({ onRetry, onRestart, onMenu }: { onRetry: () => void
   return (
     <Scrim tint="rgba(30,4,6,0.66)">
       <Animated.View entering={FadeInDown.delay(900).duration(420)} style={styles.card}>
-        <LittleGiant size={46} body="#1B1F24" eyes={CRIMSON} />
+        <LittleGiant size={46} body="#1B1F24" eyes={CRIMSON} band={CRIMSON} />
         <Text style={[styles.title, { color: CRIMSON, marginTop: 10 }]}>DEFEATED</Text>
         <Text style={styles.line}>The shadow holds the plain. For now.</Text>
         <View style={styles.actions}>
