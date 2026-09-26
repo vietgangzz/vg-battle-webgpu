@@ -223,6 +223,8 @@ export class Creature {
     // the bones and the mesh share the root, so the bind matrix is the identity in creature space
     this.mesh.bind(new THREE.Skeleton(this.bones, model.inverseBind), new THREE.Matrix4());
     this.mixer = new THREE.AnimationMixer(this.root);
+    // every clip's action (and its bindings to the bones) made now, not on its first play mid-fight
+    for (const clip of model.clips.values()) this.mixer.clipAction(clip);
     this.root.name = `creature:${model.name}`;
   }
 

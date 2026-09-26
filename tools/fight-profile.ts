@@ -56,7 +56,8 @@ if (process.argv.includes("--fill")) {
     console.log(`  meadow fill ${(performance.now() - t).toFixed(1)} ms`);
   };
 }
-const game = new Explore(player as never, data, { pop: () => pops++ }, buildCreatures(cman, cblobs));
+const heard: string[] = [];
+const game = new Explore(player as never, data, { pop: () => pops++, sound: (n) => heard.push(n), hud: (h) => heard.push("hud:" + (h as { banner: string }).banner) }, buildCreatures(cman, cblobs));
 game.start(true);
 // --merge: every plant type's chunks as one instanced draw, every instanced Meshy kind as one (the experiment:
 // what the JS thread saves when the GPU is left to cull)
@@ -165,7 +166,8 @@ const measure = async (label: string, seconds: number, act: (i: number) => void)
     }
     await env.device.queue.onSubmittedWorkDone();
     cpu.push(c1 - c0);
-    if (process.argv.includes("--slow") && c1 - c0 > 16) console.log(`  slow ${label} frame ${i}: ${(c1 - c0).toFixed(1)} ms, ${renderer.info.render.drawCalls} draws`);
+    if (process.argv.includes("--slow") && c1 - c0 > 16) console.log(`  slow ${label} frame ${i}: ${(c1 - c0).toFixed(1)} ms, ${renderer.info.render.drawCalls} draws; ${[...new Set(heard)].join(",")} ${(game as unknown as { monsters: { alive: boolean; kind: string; state: string }[] }).monsters.filter((m) => m.alive).map((m) => m.kind + ":" + m.state).join(" ")}`);
+    heard.length = 0;
     gpu.push(performance.now() - c1);
   }
   const avg = (a: number[]) => a.reduce((p, q) => p + q, 0) / a.length;

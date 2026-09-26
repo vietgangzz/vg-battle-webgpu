@@ -110,9 +110,9 @@ const Quests = memo(
   const [open, setOpen] = useState(true);
   const rows: [string, string, boolean][] = [
     ["Light the shrines", `${o.shrines[0]}/${o.shrines[1]}`, o.shrines[0] === o.shrines[1]],
-    ["Clear shadow camps", `${o.camps[0]}/${o.camps[1]}`, o.camps[0] === o.camps[1]],
+    ["Clear the camps", `${o.camps[0]}/${o.camps[1]}`, o.camps[0] === o.camps[1]],
     ["Lotus spirits", `${o.spirits[0]}/${o.spirits[1]}`, o.spirits[0] === o.spirits[1]],
-    ["Shadow General · pagoda", o.boss ? "!" : "", false],
+    ["Tiger Lord · pagoda", o.boss ? "!" : "", false],
   ];
   // the first thing not yet done is the one to chase
   const current = rows.findIndex(([, , done]) => !done);

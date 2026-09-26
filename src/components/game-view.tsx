@@ -95,7 +95,7 @@ function putList(sv: SharedValue<number[]>, v: ArrayLike<number>) {
   sv.value = copy;
 }
 
-export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean; brawl?: number }) {
+export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart?: boolean; brawl?: number; boss?: number }) {
   useKeepAwake();
   const [fontsLoaded] = useFonts({ ManropeSemiBold: require("../../assets/fonts/Manrope-SemiBold.ttf") });
   const ref = useRef<CanvasRef>(null);
@@ -207,15 +207,16 @@ export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean
     [soundtrack, cut],
   );
 
-  /** Into the valley (fresh), or back at the last lit shrine. */
+  /** Into the valley (fresh), or back at the last lit shrine; `then` runs once she is there. */
   const startExplore = useCallback(
-    (fresh = true) => {
+    (fresh = true, then?: () => void) => {
       cut(() => {
         soundtrack.pause();
         setPaused(false);
         setPops([]);
         if (mode.current === "game") game.current?.leave();
         explore.current?.start(fresh);
+        then?.();
         setMode("explore");
       });
     },
@@ -227,10 +228,11 @@ export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean
   useEffect(() => {
     if (!autostart || autostarted.current || !roam || view !== "menu") return;
     autostarted.current = true;
-    startExplore(true);
+    // ?boss=1: before the tiger lord's courtyard (2: and SORA fights him on her own)
+    startExplore(true, boss ? () => roam.game.toBoss(boss === 2) : undefined);
     // ?brawl=N: the fight benchmark, N packs at once
     if (brawl) roam.game.brawl(brawl);
-  }, [autostart, brawl, roam, view, startExplore]);
+  }, [autostart, brawl, boss, roam, view, startExplore]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;

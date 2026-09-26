@@ -335,12 +335,12 @@ export class Bolts {
     this.burst(at, size, pink);
   }
 
-  /** A ring of light spreading flat over the ground from `at` (on the ground), `size` metres out. */
-  groundRing(at: THREE.Vector3, size: number, pink = false) {
+  /** A ring of light spreading flat over the ground from `at` (on the ground), `size` metres out (lime, pink, or `rgb`). */
+  groundRing(at: THREE.Vector3, size: number, pink = false, rgb?: readonly [number, number, number]) {
     const g = this.rings.find((x) => x.t >= 1) ?? this.rings[0];
     g.t = 0;
     g.size = size;
-    (g.tint.value as THREE.Color).setRGB(...(pink ? LOTUS_PINK : LIME));
+    (g.tint.value as THREE.Color).setRGB(...(rgb ?? (pink ? LOTUS_PINK : LIME)));
     // a hand above the grass, so it lies over the lawn rather than in it
     g.mesh.position.set(at.x, at.y, at.z + 0.18);
     g.mesh.scale.setScalar(0.4);

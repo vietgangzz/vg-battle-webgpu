@@ -8,9 +8,11 @@ import { buildCreatures, type CreatureManifest } from "./creature";
 // Metro bundles binary assets through require(), which needs literal paths
 /* eslint-disable @typescript-eslint/no-require-imports */
 const BLOBS: Record<string, number> = {
-  bandit: require("../../../assets/creatures/bandit.bin"),
   golem: require("../../../assets/creatures/golem.bin"),
   river_demon: require("../../../assets/creatures/river_demon.bin"),
+  tiger: require("../../../assets/creatures/tiger.bin"),
+  tiger_guard: require("../../../assets/creatures/tiger_guard.bin"),
+  tiger_brute: require("../../../assets/creatures/tiger_brute.bin"),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 

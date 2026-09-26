@@ -1,9 +1,11 @@
 /**
  * Exploring the Ninh Bình valley. SORA is free to go anywhere: along the
  * towpath, over the stone bridge, up through the rice terraces to the pagoda.
- * Shadow camps lie in wait (walk into one and it wakes, wave on wave); wayside
- * shrines, once lit, are where she wakes if she falls; lotus spirits drift in
- * hidden corners; the Shadow General holds the pagoda courtyard.
+ * The tiger lord's camps lie in wait (walk into one and it wakes, wave on
+ * wave); wayside shrines, once lit, are where she wakes if she falls; lotus
+ * spirits drift in hidden corners; Ông Ba Mươi, the tiger lord, holds the
+ * pagoda courtyard. (Without the creature models, KAGE's shadows stand in for
+ * his soldiers and the Shadow General for him.)
  *
  * Same fighters, moves, effects and combat as the stage roads (combat.ts);
  * the ground is the valley's terrain, the camera orbits under the thumb.
@@ -144,8 +146,12 @@ interface Pack {
   state: "asleep" | "out" | "gone";
   t: number;
 }
-/** how many of each monster the valley can have out at once */
-const HERD: Record<MonsterKind, number> = { bandit: 8, river_demon: 5, golem: 3 };
+/** the tiger lord's slams and roars ring the ground in amber */
+const QUAKE: [number, number, number] = [1.6, 0.75, 0.2];
+/** how many of each monster the valley can have out at once (the tiger lord's soldiers serve the packs and the camps) */
+const HERD: Partial<Record<MonsterKind, number>> = { tiger_guard: 12, tiger_brute: 3, river_demon: 5, golem: 3, tiger: 1 };
+/** who answers a camp's call for a shadow or a brute */
+const SOLDIER: Partial<Record<Kind, MonsterKind>> = { shade: "tiger_guard", brute: "tiger_brute" };
 
 interface Camp {
   x: number;
@@ -162,6 +168,8 @@ export class Explore {
   readonly world: World;
   readonly hero: Actor;
   readonly boss: Actor;
+  /** the tiger lord (when the creature models are loaded): the boss in the General's place */
+  private readonly tiger: Monster | null = null;
   readonly fx: FxDirector;
   readonly camera = new OrbitCamera();
   readonly combat: Combat;
@@ -283,9 +291,10 @@ export class Explore {
       for (const kind of Object.keys(HERD) as MonsterKind[]) {
         const model = creatures.get(kind);
         if (!model) continue;
-        for (let i = 0; i < HERD[kind]; i++) this.monsters.push(new Monster(kind, model, this.world.group, (seed += 7)));
+        for (let i = 0; i < HERD[kind]!; i++) this.monsters.push(new Monster(kind, model, this.world.group, (seed += 7)));
       }
       for (const m of this.monsters) SunShadow.cast(m.body.root);
+      this.tiger = this.monsters.find((m) => m.kind === "tiger") ?? null;
     }
 
     const m = data.manifest;
@@ -436,7 +445,7 @@ export class Explore {
     this.hud.results = null;
     this.setPhase("title");
     this.say(fresh ? "NINH BÌNH" : "", fresh ? "TRÀNG AN · THE SHADOWED VALLEY" : "");
-    if (fresh) this.toast("Light the shrines · clear the shadow camps · face the Shadow General at the pagoda", 6);
+    if (fresh) this.toast(`Light the shrines · clear the camps · face ${this.tiger ? "the Tiger Lord" : "the Shadow General"} at the pagoda`, 6);
   }
 
   // ---------------------------------------------------------------- the title screen
@@ -664,11 +673,16 @@ export class Explore {
             f.active = false;
             f.actor.remove();
           }
-          this.toast("The shadow camp falls quiet again", 3);
+          for (const m of this.monsters) if (m.camp === i) m.remove();
+          this.toast("The camp falls quiet again", 3);
           this.setPhase("roam");
           break;
         }
-        if (!c.pending.length && this.foes.every((f) => f.camp !== i || !f.active || f.actor.dead || f.actor.vanish >= 0)) {
+        if (
+          !c.pending.length &&
+          this.foes.every((f) => f.camp !== i || !f.active || f.actor.dead || f.actor.vanish >= 0) &&
+          this.monsters.every((m) => m.camp !== i || m.down || m.dead)
+        ) {
           if (c.wave + 1 < c.waves) this.startWave(c, c.wave + 1);
           else {
             c.state = "cleared";
@@ -719,8 +733,19 @@ export class Explore {
   }
 
   private spawnDue(c: Camp, camp: number) {
+    const soldiers = this.monsters.some((m) => m.kind === "tiger_guard");
     c.pending = c.pending.filter((p) => {
       if (c.t < p.at) return true;
+      // the tiger lord's soldiers answer the call (waiting for one to come free if they are all out)
+      if (soldiers) {
+        const m = this.monsters.find((x) => x.kind === SOLDIER[p.kind] && x.dead && x.pack < 0 && x.camp < 0);
+        if (!m) return true;
+        m.place(p.x, p.y, this.world.ground.at(p.x, p.y), 2 + camp * 2, yawOf(V2.set(this.hero.pos.x - p.x, this.hero.pos.y - p.y, 0)));
+        m.camp = camp;
+        m.wake(this.time);
+        this.fx.fire("dashKage", this.time, V.set(m.pos.x, m.pos.y, m.groundZ), m.yaw, 0.1);
+        return false;
+      }
       const f = this.foes.find((x) => x.actor.kind === p.kind && (!x.active || x.actor.dead));
       if (!f) return true;
       f.active = true;
@@ -738,6 +763,15 @@ export class Explore {
     const b = this.world.data.manifest.markers.find((k) => k.type === "boss")!;
     this.hud.objectives.boss = true;
     this.setPhase("bossIntro");
+    const tiger = this.tiger;
+    if (tiger) {
+      // Ông Ba Mươi steps out into his courtyard and roars
+      tiger.place(b.at[0], b.at[1], this.world.ground.at(b.at[0], b.at[1]), 6, b.yaw ?? 0);
+      tiger.wake(this.time);
+      this.fx.fire("dashKage", this.time, V.set(tiger.pos.x, tiger.pos.y, tiger.groundZ), tiger.yaw, 0.05);
+      this.say("TIGER LORD", "ÔNG BA MƯƠI · LORD OF THE PAGODA");
+      return;
+    }
     const boss = this.boss;
     this.levelFoe(boss, 6, 0.12, 0.1);
     boss.place(V.set(b.at[0], b.at[1], 0), b.yaw ?? 0);
@@ -797,7 +831,7 @@ export class Explore {
     const m = f as unknown as Monster | Actor;
     const base = m instanceof Monster ? m.xp : XP[f.kind];
     this.gainXp(Math.round(base * (1 + 0.3 * (f.level - 1))), f);
-    if (f === this.boss) {
+    if (f === this.lord) {
       this.combat.slow = 1.1;
       this.orbs.spawn(f.pos, 10);
       this.setPhase("clear");
@@ -805,7 +839,12 @@ export class Explore {
       this.after(2.6, () => this.finishValley());
       return;
     }
-    this.orbs.spawn(f.pos, f.kind === "brute" ? 7 : 3);
+    this.orbs.spawn(f.pos, (m instanceof Monster ? m.spec.heavy : f.kind === "brute") ? 7 : 3);
+  }
+
+  /** Who holds the pagoda: the tiger lord, or (without the creature models) the Shadow General. */
+  private get lord(): Actor {
+    return this.tiger ? (this.tiger as unknown as Actor) : this.boss;
   }
 
   /** The valley is freed: tally the journey. */
@@ -920,7 +959,8 @@ export class Explore {
       put(a.pos, 1.55 * a.scale, a.hp, a.maxHp, a.level, a.vanish < 0 && a.hp < a.maxHp);
     }
     // the wild monsters nearest SORA first; a bar shows once one has noticed her
-    const near = this.monsters.filter((m) => m.alive).sort((p, q) => p.pos.distanceToSquared(this.hero.pos) - q.pos.distanceToSquared(this.hero.pos));
+    // (the boss has its own bar across the top)
+    const near = this.monsters.filter((m) => m.alive && !m.spec.boss).sort((p, q) => p.pos.distanceToSquared(this.hero.pos) - q.pos.distanceToSquared(this.hero.pos));
     for (const m of near) put(m.pos, m.body.model.entry.height + 0.35, m.hp, m.maxHp, m.level, m.aggro && m.pos.distanceTo(this.hero.pos) < 30);
     for (; slot < BAR_SLOTS; slot++) bars[slot * 4 + 3] = 0;
   }
@@ -958,7 +998,7 @@ export class Explore {
     this.cloud.value = this.clock * 0.05;
     fs.pose(this.fx.frames, this.fx.offsets);
     player.post.update(AMBIENT_FRAME, this.fx.postFrames(this.postFrames));
-    const foe = this.phase === "boss" || this.phase === "bossIntro" || this.phase === "clear" ? this.boss : this.hero.target;
+    const foe = this.phase === "boss" || this.phase === "bossIntro" || this.phase === "clear" ? this.lord : this.hero.target;
     this.camera.update(
       DT,
       this.clock,
@@ -1091,7 +1131,10 @@ export class Explore {
     h.hp = Math.ceil(this.hero.hp);
     h.maxHp = this.hero.maxHp;
     const showBoss = this.phase === "bossIntro" || this.phase === "boss";
-    h.boss = showBoss ? { hp: Math.ceil(this.boss.hp), max: this.boss.maxHp, name: "SHADOW GENERAL", title: "HẮC TƯỚNG" } : null;
+    const lord = this.lord;
+    h.boss = showBoss
+      ? { hp: Math.ceil(lord.hp), max: lord.maxHp, name: this.tiger ? "TIGER LORD" : "SHADOW GENERAL", title: this.tiger ? "ÔNG BA MƯƠI" : "HẮC TƯỚNG" }
+      : null;
     h.combo = this.combat.combo;
     h.level = this.level;
     h.xp = this.xp;
@@ -1285,6 +1328,11 @@ export class Explore {
     shake: (n: number) => this.camera.shake(n),
     ground: (x: number, y: number) => this.world.ground.at(x, y),
     collide: (m: Monster) => this.world.collide(m.pos, m.radius, V.copy(m.pos)),
+    // a slam or a roar: an amber ring races out over the ground, and the thud
+    quake: (at: THREE.Vector3, size: number) => {
+      this.bolts.groundRing(at, size, false, QUAKE);
+      this.events.sound?.("slam");
+    },
   };
 
   private updatePacks(dt: number) {
@@ -1377,6 +1425,22 @@ export class Explore {
   private brawlT = 0;
 
   /**
+   * Straight to the pagoda courtyard (opened with ?boss=1): SORA in front of
+   * it, close enough that the tiger lord steps out as the title clears. With
+   * `auto` (?boss=2) she fights him on her own, as in the benchmark.
+   */
+  toBoss(auto = false) {
+    const b = this.world.data.manifest.markers.find((k) => k.type === "boss")!;
+    const a = ((b.yaw ?? 0) * Math.PI) / 180;
+    this.hero.place(V.set(b.at[0] + Math.cos(a) * 15, b.at[1] + Math.sin(a) * 15, 0), (b.yaw ?? 0) + 180);
+    this.camera.reset(this.hero);
+    this.duel = auto;
+  }
+
+  /** SORA fights the boss on her own (?boss=2) */
+  private duel = false;
+
+  /**
    * A repeatable fight for measuring frame rate (opened with ?brawl=1): pack
    * after pack is set down a few strides ahead of SORA, already hunting her,
    * and she fights them on her own: blades up close, kiếm khí from afar, the
@@ -1391,6 +1455,10 @@ export class Explore {
   private brawlAuto = true;
 
   private autoBrawl(dt: number) {
+    if (this.duel && this.phase === "boss") {
+      this.autopilot(dt);
+      return;
+    }
     if (!this.brawling || this.phase !== "roam") return;
     const hero = this.hero;
     // any pack still out but far off is sent home first: the fight is here
@@ -1413,11 +1481,17 @@ export class Explore {
       for (const m of this.monsters) if (m.pack === i) m.aggro = true;
       out++;
     }
-    this.brawlT -= dt;
     if (!this.brawlAuto) {
       hero.hp = Math.max(hero.hp, hero.maxHp * 0.5);
       return;
     }
+    this.autopilot(dt);
+  }
+
+  /** The benchmark's hands: blades up close, kiếm khí from afar, the ultimate whenever it is ready. */
+  private autopilot(dt: number) {
+    const hero = this.hero;
+    this.brawlT -= dt;
     if (this.brawlT > 0 || hero.hp <= 0) return;
     // she never falls in a benchmark
     hero.hp = Math.max(hero.hp, hero.maxHp * 0.5);

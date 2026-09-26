@@ -3,9 +3,11 @@
  * (creature.ts) that roam in packs and fight SORA with the same combat as
  * everyone else.
  *
- *  bandit       a shadow bandit: quick, two slashes, comes in numbers
  *  golem        a stone guardian: slow, heavy blows, shrugs off light hits
  *  river_demon  a jade river demon: a trident up close, water orbs from afar
+ *  tiger        Ông Ba Mươi, the tiger lord at the pagoda: the valley's boss
+ *  tiger_guard  his soldiers, in indigo: quick claws, the odd slam
+ *  tiger_brute  his white tigers, in jade: heavy, a slam that shakes the ground
  *
  * A Monster wears the same face to combat.ts as a fighter (position, yaw,
  * health, reactions, defeat), so blades, kiếm khí, crits, guards and parries
@@ -21,7 +23,7 @@ import type { HitSpec, MoveDef } from "../game/moves";
 import { glow } from "../game/shading";
 import { Creature, type CreatureModel } from "./creature";
 
-export type MonsterKind = "bandit" | "golem" | "river_demon";
+export type MonsterKind = "golem" | "river_demon" | "tiger" | "tiger_guard" | "tiger_brute";
 
 interface Spec {
   /** health at level 1, and what combat treats it as (a heavy body shrugs off light blows) */
@@ -31,9 +33,9 @@ interface Spec {
   radius: number;
   walk: number;
   run: number;
-  /** melee reach (m), the blows it throws (clip, speed, hit), and the pause between */
+  /** melee reach (m), the blows it throws (clip, speed, hit, and a ring over the ground where it lands), and the pause between */
   reach: number;
-  attacks: { clip: string; speed: number; hit: HitSpec }[];
+  attacks: { clip: string; speed: number; hit: HitSpec; quake?: number }[];
   cooldown: [number, number];
   /** a thrown water orb: from how far, how often */
   cast?: { min: number; max: number; every: number; speed: number; hit: HitSpec };
@@ -42,27 +44,16 @@ interface Spec {
   stun: number;
   runClip: string;
   runSpeed: number;
+  /** a boss: it roars as it arrives and again in a rage at half health, and only a parry makes it flinch */
+  boss?: boolean;
 }
 
+/** The tiger lord's roar: a blast of air that throws SORA back if she stands close. */
+const ROAR: HitSpec = { range: 99, arc: 180, damage: 4, kind: "heavy", clip: "waveHit" };
+const ROAR_REACH = 6;
+const ROAR_SPEED = 1.3;
+
 const SPECS: Record<MonsterKind, Spec> = {
-  bandit: {
-    hp: 38,
-    as: "shade",
-    heavy: false,
-    radius: 0.45,
-    walk: 1.4,
-    run: 4.3,
-    reach: 2.2,
-    attacks: [
-      { clip: "attack", speed: 1.7, hit: { range: 2.6, arc: 75, damage: 8, kind: "light", clip: "diagonalHit" } },
-      { clip: "attack2", speed: 1.7, hit: { range: 2.6, arc: 75, damage: 9, kind: "light", clip: "fallingHit" } },
-    ],
-    cooldown: [0.9, 1.9],
-    xp: 14,
-    stun: 0.5,
-    runClip: "run",
-    runSpeed: 1.05,
-  },
   golem: {
     hp: 120,
     as: "brute",
@@ -97,13 +88,69 @@ const SPECS: Record<MonsterKind, Spec> = {
     runClip: "run",
     runSpeed: 1.0,
   },
+  tiger: {
+    hp: 250,
+    as: "brute",
+    heavy: true,
+    radius: 1.0,
+    walk: 1.6,
+    run: 4.4,
+    reach: 3.2,
+    attacks: [
+      { clip: "attack", speed: 1.45, hit: { range: 3.4, arc: 80, damage: 12, kind: "heavy", clip: "diagonalHit" } },
+      { clip: "slam", speed: 1.3, hit: { range: 4.6, arc: 180, damage: 16, kind: "heavy", clip: "waveHit" }, quake: 7 },
+    ],
+    cooldown: [1.1, 2.1],
+    xp: 400,
+    stun: 0.9,
+    runClip: "run",
+    runSpeed: 0.8,
+    boss: true,
+  },
+  tiger_guard: {
+    hp: 38,
+    as: "shade",
+    heavy: false,
+    radius: 0.45,
+    walk: 1.4,
+    run: 4.3,
+    reach: 2.2,
+    attacks: [
+      { clip: "attack", speed: 1.7, hit: { range: 2.6, arc: 75, damage: 8, kind: "light", clip: "diagonalHit" } },
+      { clip: "attack", speed: 1.9, hit: { range: 2.6, arc: 75, damage: 8, kind: "light", clip: "fallingHit" } },
+      { clip: "slam", speed: 1.6, hit: { range: 2.8, arc: 100, damage: 10, kind: "heavy", clip: "waveHit" } },
+    ],
+    cooldown: [0.9, 1.9],
+    xp: 14,
+    stun: 0.5,
+    runClip: "run",
+    runSpeed: 1.15,
+  },
+  tiger_brute: {
+    hp: 100,
+    as: "brute",
+    heavy: true,
+    radius: 0.75,
+    walk: 1.2,
+    run: 3.0,
+    reach: 2.8,
+    attacks: [
+      { clip: "attack", speed: 1.35, hit: { range: 3.0, arc: 75, damage: 12, kind: "heavy", clip: "diagonalHit" } },
+      { clip: "slam", speed: 1.35, hit: { range: 3.8, arc: 140, damage: 16, kind: "heavy", clip: "waveHit" }, quake: 4.5 },
+    ],
+    cooldown: [1.4, 2.6],
+    xp: 32,
+    stun: 0.3,
+    runClip: "run",
+    runSpeed: 0.95,
+  },
 };
 
 const V = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 let ids = 1000;
 
-type State = "idle" | "wander" | "chase" | "attack" | "cast" | "stun" | "dying" | "gone";
+type State = "idle" | "wander" | "chase" | "attack" | "cast" | "stun" | "roar" | "dying" | "gone";
 
 /** A red "!" that pops over a monster's head the moment it notices SORA. */
 function alertMaterial() {
@@ -149,6 +196,10 @@ export class Monster {
   /** has it noticed SORA */
   aggro = false;
   pack = -1;
+  /** the shadow camp it was called to (-1: none) */
+  camp = -1;
+  /** a boss past half health: quicker, and its blows come sooner */
+  raged = false;
   private state: State = "gone";
   private t = 0;
   private until = 0;
@@ -164,6 +215,10 @@ export class Monster {
   private lastFlinch = -10;
   private armourUntil = -1;
   private clock = 0;
+  /** held fast while chasing (s), and the sidestep round what holds it: time left, and which way */
+  private stuckT = 0;
+  private detourT = 0;
+  private detourSide = 1;
   /** the "!" over its head when it first notices SORA */
   private readonly alert: THREE.Sprite;
   get alertSprite() {
@@ -211,7 +266,7 @@ export class Monster {
     return forwardOf(this.yaw);
   }
   get busy() {
-    return this.state === "attack" || this.state === "cast" || this.state === "stun";
+    return this.state === "attack" || this.state === "cast" || this.state === "stun" || this.state === "roar";
   }
   get airborne() {
     return false;
@@ -243,6 +298,7 @@ export class Monster {
     this.aggro = this.wasAggro = false;
     this.alertT = -1;
     this.alert.visible = false;
+    this.raged = false;
     this.state = "idle";
     this.until = this.rand() * 2;
     this.wanderTo = null;
@@ -253,10 +309,19 @@ export class Monster {
     this.sync();
   }
 
+  /** Called to the fight at once, already after SORA (a camp's soldier, or the boss: who arrives roaring). */
+  wake(time: number) {
+    this.aggro = this.wasAggro = true;
+    this.nextAttack = time + 0.8;
+    if (this.spec.boss) this.roar();
+    else this.state = "chase";
+  }
+
   /** Take it off the field. */
   remove() {
     this.dead = true;
     this.down = false;
+    this.camp = -1;
     this.state = "gone";
     this.body.root.visible = false;
     this.alert.visible = false;
@@ -271,11 +336,13 @@ export class Monster {
     // the blow pushes it back along the line from the striker
     if (from) {
       V.subVectors(this.pos, from.pos).setZ(0).normalize();
-      const k = name === "skid" ? (heavy ? 1.2 : 2.6) : name === "stagger" ? 1.2 : heavy ? 0.1 : 0.5;
+      const k = (name === "skid" ? (heavy ? 1.2 : 2.6) : name === "stagger" ? 1.2 : heavy ? 0.1 : 0.5) * (this.spec.boss ? 0.3 : 1);
       this.push.set(V.x * k * 6, V.y * k * 6);
     }
     this.body.flash(1);
     this.aggro = true;
+    // a boss stands its ground (roaring, it can't be stopped at all); only a parry staggers it
+    if (this.spec.boss && (name !== "stagger" || this.state === "roar")) return;
     // a heavy body only stops for a heavy blow or a parry
     if (heavy && name !== "skid" && name !== "stagger") return;
     // armoured up: it takes the blow and keeps coming (a parry still breaks it)
@@ -311,7 +378,16 @@ export class Monster {
     this.t = 0;
     this.until = seconds;
     this.blow = null;
-    this.body.play("hit", { loop: false, fade: 0.06, speed: 1.4 });
+    if (!this.body.play("hit", { loop: false, fade: 0.06, speed: 1.4 })) this.body.play("idle", { fade: 0.06, speed: 0.4 });
+  }
+
+  /** The boss's roar: it squares up, beats its chest and roars, and the air throws SORA back. */
+  private roar() {
+    this.state = "roar";
+    this.t = 0;
+    this.landed = false;
+    this.blow = null;
+    this.body.play("roar", { loop: false, fade: 0.15, speed: ROAR_SPEED });
   }
 
   // ---------------------------------------------------------------- its mind
@@ -388,6 +464,11 @@ export class Monster {
           break;
         }
         this.turnTo(toHero, dt, 7);
+        if (s.boss && !this.raged && this.hp < this.maxHp * 0.5) {
+          this.raged = true;
+          this.roar();
+          break;
+        }
         const cast = s.cast;
         if (cast && dist > cast.min && dist < cast.max && time > this.nextCast && hero.hp > 0) {
           this.state = "cast";
@@ -402,24 +483,25 @@ export class Monster {
           this.state = "attack";
           this.t = 0;
           this.landed = false;
-          this.body.play(this.blow.clip, { loop: false, fade: 0.08, speed: this.blow.speed });
+          this.body.play(this.blow.clip, { loop: false, fade: 0.08, speed: this.blow.speed * this.fury });
           break;
         }
         // close in; hover just outside reach while waiting a turn
-        const want = dist > s.reach * 0.8 ? s.run : 0;
+        const want = dist > s.reach * 0.8 ? s.run * this.fury : 0;
         move = dist > s.reach + 4 ? want : want * 0.6;
         this.anim(move > 0 ? s.runClip : "idle", move > s.walk * 1.3 ? s.runSpeed : 1);
         break;
       }
       case "attack": {
         const blow = this.blow!;
-        const impact = (this.body.impact(blow.clip) ?? 0.5) / blow.speed;
+        const impact = (this.body.impact(blow.clip) ?? 0.5) / (blow.speed * this.fury);
         if (this.t < impact * 0.8) this.turnTo(toHero, dt, 5);
         if (!this.landed && this.t >= impact) {
           this.landed = true;
           const facing = this.forward.dot(V2.copy(toHero).normalize()) > Math.cos((blow.hit.arc * Math.PI) / 180);
           if (dist < blow.hit.range && facing) ctx.combat.blast(this as unknown as Actor, hero, blow.hit);
-          ctx.shake(this.spec.heavy ? 0.12 : 0.03);
+          ctx.shake(this.spec.heavy ? (s.boss ? 0.2 : 0.12) : 0.03);
+          if (blow.quake) ctx.quake?.(V2.set(this.pos.x, this.pos.y, this.groundZ), blow.quake);
         }
         if (this.t > impact + (this.spec.heavy ? 0.7 : 0.45)) this.endAttack(time);
         break;
@@ -435,6 +517,21 @@ export class Monster {
         if (this.t > impact + 0.5) this.endAttack(time);
         break;
       }
+      case "roar": {
+        const at = (this.body.impact("roar") ?? 1.6) / ROAR_SPEED;
+        if (this.t < at) this.turnTo(toHero, dt, 3);
+        if (!this.landed && this.t >= at) {
+          this.landed = true;
+          if (dist < ROAR_REACH && hero.hp > 0) ctx.combat.blast(this as unknown as Actor, hero, ROAR);
+          ctx.shake(0.3);
+          ctx.quake?.(V2.set(this.pos.x, this.pos.y, this.groundZ), 9);
+        }
+        if (this.t > at + 0.75) {
+          this.state = "chase";
+          this.nextAttack = time + 0.3;
+        }
+        break;
+      }
       case "stun":
         if (this.t > this.until) {
           ctx.tokens.give(this.id);
@@ -443,12 +540,26 @@ export class Monster {
         break;
     }
 
+    const x0 = this.pos.x;
+    const y0 = this.pos.y;
     if (move > 0) {
-      const f = this.forward;
+      // walking round something in the way: it heads off to one side for a moment
+      const f = this.detourT > 0 ? forwardOf(this.yaw + this.detourSide * 70, V2) : this.forward;
+      this.detourT -= dt;
       this.pos.x += f.x * move * dt;
       this.pos.y += f.y * move * dt;
     }
     ctx.collide(this);
+    // chasing her but held fast (a straight line into a post, an urn, a wall): step round it
+    if (move > 0 && this.state === "chase") {
+      const went = Math.hypot(this.pos.x - x0, this.pos.y - y0);
+      this.stuckT = went < move * dt * 0.3 ? this.stuckT + dt : Math.max(0, this.stuckT - dt * 2);
+      if (this.stuckT > 0.35 && this.detourT <= 0) {
+        this.detourSide = this.rand() < 0.5 ? -1 : 1;
+        this.detourT = 0.9;
+        this.stuckT = 0;
+      }
+    }
     this.groundZ = ctx.ground(this.pos.x, this.pos.y);
     this.pos.z = this.groundZ;
     this.sync();
@@ -458,7 +569,12 @@ export class Monster {
     const s = SPECS[this.kind];
     this.state = "chase";
     this.blow = null;
-    this.nextAttack = time + s.cooldown[0] + this.rand() * (s.cooldown[1] - s.cooldown[0]);
+    this.nextAttack = time + (s.cooldown[0] + this.rand() * (s.cooldown[1] - s.cooldown[0])) / this.fury;
+  }
+
+  /** how much faster a raging boss moves and strikes */
+  private get fury() {
+    return this.raged ? 1.3 : 1;
   }
 
   private turnTo(dir: THREE.Vector3, dt: number, rate: number) {
@@ -488,6 +604,8 @@ export interface MonsterContext {
   shake(n: number): void;
   ground(x: number, y: number): number;
   collide(m: Monster): void;
+  /** a slam or a roar: a ring over the ground at `at`, `size` metres out */
+  quake?(at: THREE.Vector3, size: number): void;
 }
 
 // ---------------------------------------------------------------- the river demon's orbs
@@ -563,18 +681,18 @@ export class WaterOrbs {
 // ---------------------------------------------------------------- packs
 /**
  * Where the wild monsters lurk, how strong they are and who runs with them:
- * bandits in the fields near the village, demons along the river, guardians
- * with them deeper in, the strongest at the foot of the pagoda.
+ * the tiger lord's soldiers in the fields near the village, demons along the
+ * river, guardians with them deeper in, the strongest at the foot of the pagoda.
  */
 export const PACKS: { x: number; y: number; level: number; kinds: MonsterKind[] }[] = [
-  { x: -86, y: -52, level: 1, kinds: ["bandit", "bandit"] },
-  { x: -72, y: -3, level: 1, kinds: ["bandit", "river_demon"] },
-  { x: -46, y: -46, level: 2, kinds: ["bandit", "bandit", "bandit"] },
+  { x: -86, y: -52, level: 1, kinds: ["tiger_guard", "tiger_guard"] },
+  { x: -72, y: -3, level: 1, kinds: ["tiger_guard", "river_demon"] },
+  { x: -46, y: -46, level: 2, kinds: ["tiger_guard", "tiger_guard", "tiger_guard"] },
   { x: -8, y: -38, level: 2, kinds: ["river_demon", "river_demon"] },
-  { x: 14, y: 8, level: 3, kinds: ["bandit", "bandit", "golem"] },
-  { x: -46, y: 32, level: 3, kinds: ["river_demon", "bandit", "bandit"] },
-  { x: -22, y: 64, level: 4, kinds: ["golem", "bandit", "river_demon"] },
-  { x: 46, y: 34, level: 5, kinds: ["bandit", "bandit", "river_demon", "golem"] },
+  { x: 14, y: 8, level: 3, kinds: ["tiger_guard", "tiger_guard", "golem"] },
+  { x: -46, y: 32, level: 3, kinds: ["river_demon", "tiger_guard", "tiger_guard"] },
+  { x: -22, y: 64, level: 4, kinds: ["golem", "tiger_guard", "river_demon"] },
+  { x: 46, y: 34, level: 5, kinds: ["tiger_guard", "tiger_guard", "river_demon", "golem"] },
   { x: 82, y: 8, level: 5, kinds: ["golem", "river_demon", "river_demon"] },
-  { x: 16, y: 92, level: 6, kinds: ["golem", "golem", "bandit", "bandit"] },
+  { x: 16, y: 92, level: 6, kinds: ["golem", "golem", "tiger_guard", "tiger_guard"] },
 ];
