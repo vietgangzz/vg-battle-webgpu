@@ -10,7 +10,7 @@ import { d } from "typegpu";
 
 import { water } from "../game/shading";
 import type { FilmScene } from "../runtime/scene";
-import { Heightfield, type WorldData, type WorldMesh } from "./data";
+import { Heightfield, type WorldData, type WorldMesh, type WorldTexture } from "./data";
 import { Meadow } from "./grass";
 import { haloMaterial, heroMaterial, karstMaterial, lampMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
 
@@ -87,8 +87,10 @@ export class World {
       else if (s.kind === "glow") mat = lampMaterial();
       else if (s.kind === "hero" && s.tex) {
         const tex = s.tex;
-        mat = this.heroMats.get(tex.o) ?? heroMaterial(this.texture(tex));
-        this.heroMats.set(tex.o, mat);
+        // one material per texture, however many cells share it
+        const key = tex.levels ? tex.levels[0][0] : tex.o!;
+        mat = this.heroMats.get(key) ?? heroMaterial(this.texture(tex));
+        this.heroMats.set(key, mat);
       } else mat = propMaterial();
       const mesh = new THREE.Mesh(geos[s.mesh], mat);
       mesh.name = `world:${s.name}`;
@@ -235,8 +237,24 @@ export class World {
   }
 
   /** A hero piece's painted texture: RGB rows from the blob, widened to RGBA, mipmapped. */
-  private texture(t: { o: number; w: number; h: number }) {
-    const rgb = this.data.u8(t.o, t.w * t.h * 3);
+  private texture(t: WorldTexture): THREE.Texture {
+    if (t.astc && t.levels && this.data.textures) {
+      // ASTC, straight to the GPU: a 4K texture in a ninth of its raw size, every mip level made offline
+      const blob = this.data.textures;
+      const mipmaps = t.levels.map(([o, n, w, h]) => ({ data: new Uint8Array(blob, o, n), width: w, height: h }));
+      const format = t.astc === 6 ? THREE.RGBA_ASTC_6x6_Format : t.astc === 8 ? THREE.RGBA_ASTC_8x8_Format : THREE.RGBA_ASTC_4x4_Format;
+      const tex = new THREE.CompressedTexture(mipmaps as unknown as ImageData[], t.w, t.h, format);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.flipY = false;
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.generateMipmaps = false;
+      tex.anisotropy = 16;
+      tex.needsUpdate = true;
+      return tex;
+    }
+    const rgb = this.data.u8(t.o!, t.w * t.h * 3);
     const rgba = new Uint8Array(t.w * t.h * 4);
     for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
       rgba[j] = rgb[i];

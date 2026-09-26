@@ -26,11 +26,11 @@ export interface WorldManifest {
   water: number;
   heightfield: { o: number; n: number; x0: number; cell: number };
   meshes: WorldMesh[];
-  /** `tex`: rows of sRGB bytes (RGB, bottom row first) for a hero piece's painted texture */
-  statics: { name: string; mesh: number; kind: "terrain" | "karst" | "prop" | "hero" | "glow"; tex?: { o: number; w: number; h: number } }[];
+  /** `tex`: a hero piece's painted texture (see WorldTexture) */
+  statics: { name: string; mesh: number; kind: "terrain" | "karst" | "prop" | "hero" | "glow"; tex?: WorldTexture }[];
   instances: { name: string; mesh: number; kind: InstanceKind; count: number; chunks: WorldChunk[] }[];
   /** Meshy pieces placed many times: one model and texture, rows of (x, y, z, turn, scale) per cell */
-  heroInstances?: { name: string; mesh: number; tex: { o: number; w: number; h: number }; chunks: WorldChunk[] }[];
+  heroInstances?: { name: string; mesh: number; tex: WorldTexture; chunks: WorldChunk[] }[];
   colliders: { x: number; y: number; r: number }[];
   markers: { name: string; type: "spawn" | "shrine" | "camp" | "boss"; at: [number, number]; z: number; yaw?: number; waves?: number }[];
   spirits: { x: number; y: number; z: number }[];
@@ -45,10 +45,26 @@ export interface WorldManifest {
   halos?: [number, number, number, "silk" | "flame"][];
 }
 
+/**
+ * A hero piece's painted texture (sRGB, bottom row first): ASTC blocks of
+ * `astc` x `astc` texels, a level per mip, in the texture blob (`levels`:
+ * [offset, bytes, width, height]); or, from an older export, raw RGB rows at
+ * `o` in the main blob.
+ */
+export interface WorldTexture {
+  w: number;
+  h: number;
+  o?: number;
+  astc?: number;
+  levels?: [number, number, number, number][];
+}
+
 export class WorldData {
   constructor(
     readonly manifest: WorldManifest,
     readonly blob: ArrayBuffer,
+    /** the hero pieces' compressed textures (assets/world/ninh-binh-tex.bin) */
+    readonly textures: ArrayBuffer | null = null,
   ) {}
 
   f32(offset: number, length: number) {

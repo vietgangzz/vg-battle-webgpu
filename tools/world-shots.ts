@@ -26,7 +26,7 @@ const { Actor } = await import("../src/battle/game/actor");
 
 const manifest = JSON.parse(readFileSync("src/battle/gen/world-ninh-binh.json", "utf8"));
 const bin = readFileSync("assets/world/ninh-binh.bin");
-const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength));
+const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), (() => { const t = readFileSync("assets/world/ninh-binh-tex.bin"); return t.buffer.slice(t.byteOffset, t.byteOffset + t.byteLength); })());
 const t0 = performance.now();
 const world = new World(data, fs);
 console.log("world built", Math.round(performance.now() - t0), "ms");

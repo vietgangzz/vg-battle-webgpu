@@ -25,7 +25,7 @@ const { buildCreatures } = await import("../src/battle/world/creature");
 
 const manifest = JSON.parse(readFileSync("src/battle/gen/world-ninh-binh.json", "utf8"));
 const bin = readFileSync("assets/world/ninh-binh.bin");
-const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength));
+const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), (() => { const t = readFileSync("assets/world/ninh-binh-tex.bin"); return t.buffer.slice(t.byteOffset, t.byteOffset + t.byteLength); })());
 const cman = JSON.parse(readFileSync("src/battle/gen/creatures.json", "utf8"));
 const cblobs: Record<string, ArrayBuffer> = {};
 for (const name of Object.keys(cman.creatures)) {

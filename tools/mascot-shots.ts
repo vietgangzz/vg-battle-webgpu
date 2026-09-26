@@ -22,7 +22,7 @@ const { Explore } = await import("../src/battle/world/explore");
 
 const manifest = JSON.parse(readFileSync("src/battle/gen/world-ninh-binh.json", "utf8"));
 const bin = readFileSync("assets/world/ninh-binh.bin");
-const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength));
+const data = new WorldData(manifest, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength), (() => { const t = readFileSync("assets/world/ninh-binh-tex.bin"); return t.buffer.slice(t.byteOffset, t.byteOffset + t.byteLength); })());
 // the shot's own camera, laid over the game's each frame (null: the game's)
 let cam: { eye: [number, number, number]; at: [number, number, number]; tan: number } | null = null;
 const player = {

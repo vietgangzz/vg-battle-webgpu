@@ -27,6 +27,8 @@ export async function setup(W: number, H: number) {
   const adapter = await gpu.requestAdapter();
   const device = await adapter!.requestDevice({
     requiredLimits: { maxColorAttachmentBytesPerSample: adapter!.limits.maxColorAttachmentBytesPerSample },
+    // the world's textures are ASTC, as on the phone
+    requiredFeatures: [...adapter!.features].filter((f) => f.startsWith("texture-compression")) as GPUFeatureName[],
   });
   device.addEventListener("uncapturederror", (e: Event) => console.error("[gpu]", (e as unknown as { error: Error }).error.message));
   const format = gpu.getPreferredCanvasFormat();
