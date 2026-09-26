@@ -128,7 +128,9 @@ const Quests = memo(
         rows.map(([k, v, done], i) => (
           <View key={k} style={[styles.questRow, i === current && styles.questCurrent, { pointerEvents: "none" }]}>
             <View style={[styles.questDot, done && styles.questDone, i === current && styles.questDotCurrent]} />
-            <Text style={[styles.questText, done && styles.questTextDone, i === current && styles.questTextCurrent]}>{k}</Text>
+            <Text style={[styles.questText, done && styles.questTextDone, i === current && styles.questTextCurrent]} numberOfLines={1}>
+              {k}
+            </Text>
             {!done && ROW_KIND[i] >= 0 && <QuestDistance way={way} kind={ROW_KIND[i]} />}
             <Text style={[styles.questCount, done && styles.questTextDone]}>{v}</Text>
           </View>
@@ -174,7 +176,7 @@ const Waypoint = memo(function Waypoint({ way }: { way: SharedValue<number[]> })
     const show = w[2] && !w[3] ? 1 : 0;
     return {
       opacity: withTiming(show, { duration: show ? 260 : 160 }),
-      transform: [{ translateX: withSpring(w[0] * width - 28, SPRING) }, { translateY: withSpring(w[1] * height - 28, SPRING) }],
+      transform: [{ translateX: withSpring(w[0] * width - 36, SPRING) }, { translateY: withSpring(w[1] * height - 36, SPRING) }],
     };
   });
   const arrow = useAnimatedStyle(() => ({ transform: [{ rotate: `${turned.value}rad` }] }));
@@ -183,8 +185,8 @@ const Waypoint = memo(function Waypoint({ way }: { way: SharedValue<number[]> })
     <Animated.View style={[styles.way, box]}>
       <View style={styles.wayBadge}>
         <Animated.View style={[StyleSheet.absoluteFill, arrow]}>
-          <Svg width={56} height={56} viewBox="0 0 56 56">
-            <Path d="M46 28 L36 20.5 L38.5 28 L36 35.5 Z" fill={GOLD} />
+          <Svg width={72} height={72} viewBox="0 0 72 72">
+            <Path d="M68 36 L52 25 L56 36 L52 47 Z" fill={GOLD} />
           </Svg>
         </Animated.View>
         <View style={styles.wayCore}>
@@ -229,11 +231,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(245,243,232,0.35)",
   },
-  quests: { position: "absolute", width: 212, gap: 3, paddingVertical: 8, paddingRight: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: "rgba(12,15,17,0.26)", borderLeftWidth: 2, borderLeftColor: LIME },
+  quests: { position: "absolute", width: 236, gap: 3, paddingVertical: 8, paddingRight: 10, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: "rgba(12,15,17,0.26)", borderLeftWidth: 2, borderLeftColor: LIME },
   questHead: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 3, paddingLeft: 9 },
   questsClosed: { width: 116, paddingBottom: 5 },
-  way: { position: "absolute", left: 0, top: 0, width: 56, alignItems: "center", pointerEvents: "none" },
-  wayBadge: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
+  way: { position: "absolute", left: 0, top: 0, width: 72, alignItems: "center", pointerEvents: "none" },
+  wayBadge: { width: 72, height: 72, alignItems: "center", justifyContent: "center" },
   wayCore: {
     width: 30,
     height: 30,
@@ -248,8 +250,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
   },
-  wayDist: { marginTop: -6, color: IVORY, fontFamily: UI_FONT, fontSize: 11, padding: 0, textAlign: "center", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
-  questDist: { color: GOLD, fontFamily: UI_FONT, fontSize: 10, padding: 0, minWidth: 34, textAlign: "right" },
+  wayDist: { width: 72, marginTop: -12, color: IVORY, fontFamily: UI_FONT, fontSize: 11, padding: 0, textAlign: "center", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } },
+  questDist: { width: 40, color: GOLD, fontFamily: UI_FONT, fontSize: 10, padding: 0, textAlign: "right" },
   questHeadBar: { width: 10, height: 2, backgroundColor: LIME },
   questTitle: { color: LIME, fontFamily: UI_FONT, fontSize: 9, letterSpacing: 2.4 },
   questRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingLeft: 10, paddingVertical: 2 },

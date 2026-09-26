@@ -39,12 +39,12 @@ export function SkillSheet({ ranks, points, level, onSpend, onClose }: { ranks: 
   const { width } = useWindowDimensions();
   const side = Math.max(insets.left, insets.right, 20) + 8;
   const cols = width > 700 ? 3 : 2;
-  const cardW = Math.min(260, (width - side * 2 - (cols - 1) * 12) / cols);
+  const cardW = Math.min(300, (width - side * 2 - (cols - 1) * 12) / cols);
   return (
     <Animated.View entering={FadeIn.duration(220)} style={[StyleSheet.absoluteFill, styles.scrim]}>
       <View style={[styles.head, { paddingHorizontal: side, paddingTop: Math.max(insets.top, 14) + 6 }]}>
         <View>
-          <Text style={styles.kicker}>SORA · LEVEL {level}</Text>
+          <Text style={styles.kicker}>SORA · LEVEL {level} · A POINT EVERY LEVEL, TWO EVERY FIFTH</Text>
           <Text style={styles.title}>SKILLS</Text>
         </View>
         <PointsPill points={points} />
@@ -61,7 +61,6 @@ export function SkillSheet({ ranks, points, level, onSpend, onClose }: { ranks: 
           </Animated.View>
         ))}
       </View>
-      <Text style={styles.foot}>A point every level, and one more every fifth. Ranks stay with SORA.</Text>
     </Animated.View>
   );
 }
@@ -153,7 +152,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingLeft: 12,
     paddingRight: 10,
     borderRadius: 14,
@@ -183,5 +182,4 @@ const styles = StyleSheet.create({
   max: { fontFamily: UI_FONT, fontSize: 9, letterSpacing: 2, marginLeft: 4 },
   plus: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   plusOff: { backgroundColor: "rgba(18,22,25,0.5)", borderColor: "rgba(245,243,232,0.2)" },
-  foot: { color: IVORY, opacity: 0.4, fontFamily: UI_FONT, fontSize: 10, letterSpacing: 1, marginTop: 14 },
 });
