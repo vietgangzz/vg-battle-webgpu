@@ -35,6 +35,8 @@ world.group.visible = true;
 const dusk = Number(arg("--dusk", "0"));
 applyLook(fs, mixLook(MORNING, DUSK, dusk));
 LAMP.strength.node.value = 1 + 0.7 * dusk;
+post.grade.saturation.value = 1.2 - 0.06 * dusk;
+post.grade.contrast.value = 1.1;
 
 // SORA for scale, and the film's own world out of the way
 const sora = new Actor(fs, "hero");

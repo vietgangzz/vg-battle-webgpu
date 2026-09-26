@@ -54,8 +54,8 @@ function material(color: () => d.v4f, opts: { side?: THREE.Side; position?: () =
 }
 
 // ---------------------------------------------------------------- the valley floor
-const GRASS_A = d.vec3f(0.11, 0.3, 0.05);
-const GRASS_B = d.vec3f(0.2, 0.38, 0.06);
+const GRASS_A = d.vec3f(0.1, 0.3, 0.035);
+const GRASS_B = d.vec3f(0.17, 0.38, 0.04);
 const GRASS_SHADE = d.vec3f(0.025, 0.07, 0.035);
 const DIRT = d.vec3f(0.32, 0.22, 0.12);
 const DIRT_SHADE = d.vec3f(0.09, 0.055, 0.035);
@@ -168,7 +168,7 @@ const gust = (root: d.v3f, sway: number, scale: number, amount: number) => {
 const PETAL = d.vec3f(0.95, 0.42, 0.58);
 const STONE = d.vec3f(0.34, 0.33, 0.31);
 
-export type PlantLook = "tree" | "bamboo" | "banana" | "shrub" | "grass" | "rice" | "reed" | "lotus" | "rock";
+export type PlantLook = "tree" | "bamboo" | "banana" | "shrub" | "grass" | "rice" | "reed" | "lotus" | "rock" | "meadow" | "flower";
 
 const PLANTS: Record<
   PlantLook,
@@ -183,7 +183,15 @@ const PLANTS: Record<
   reed: { lit: [0.2, 0.3, 0.08], lit2: [0.3, 0.36, 0.1], shade: [0.05, 0.08, 0.03], wind: 0.5, tip: [0.55, 0.5, 0.3] },
   lotus: { lit: [0.1, 0.32, 0.08], lit2: [0.14, 0.36, 0.08], shade: [0.03, 0.09, 0.03], wind: 0.05 },
   rock: { lit: [0.34, 0.33, 0.31], lit2: [0.28, 0.3, 0.22], shade: [0.08, 0.08, 0.09], wind: 0 },
+  // the meadow round the player: deep roots, sunlit yellow-green tips
+  meadow: { lit: [0.13, 0.38, 0.04], lit2: [0.24, 0.5, 0.05], shade: [0.025, 0.09, 0.03], wind: 0.5, tip: [0.7, 0.78, 0.2] },
+  flower: { lit: [0.12, 0.34, 0.05], lit2: [0.18, 0.4, 0.05], shade: [0.03, 0.09, 0.03], wind: 0.45 },
 };
+/** wild flowers: white daisies, violets, buttercups, a few pinks */
+const FLOWERS = [d.vec3f(0.95, 0.95, 0.9), d.vec3f(0.58, 0.42, 0.95), d.vec3f(1.0, 0.82, 0.25), d.vec3f(0.98, 0.52, 0.7)];
+/** the odd tree in bloom: peach blossom pink, crape-myrtle violet (hoa đào, bằng lăng) */
+const BLOSSOM = d.vec3f(0.98, 0.55, 0.72);
+const BLOSSOM2 = d.vec3f(0.7, 0.5, 0.95);
 
 /** One material per plant look: placed per instance, blown, toon-lit, backlit leaves glow. */
 export function plantMaterial(look: PlantLook) {
@@ -197,6 +205,8 @@ export function plantMaterial(look: PlantLook) {
   const hasTip = !!p.tip;
   const windAmt = p.wind;
   const isRock = look === "rock";
+  const isFlower = look === "flower";
+  const isTree = look === "tree";
   const { pos, rs } = inst();
   const leaf = t3.attribute("leaf", d.f32);
   const ao = t3.attribute("ao", d.f32);
@@ -238,9 +248,22 @@ export function plantMaterial(look: PlantLook) {
       const wood = std.smoothstep(0.5, 0.0, leaf.$);
       lit = std.mix(lit, barkC, wood);
       shade = std.mix(shade, barkShade, wood);
+      if (isTree) {
+        // one tree in eight is in flower
+        const pick = B.whiteNoise(std.add(std.floor(root), d.vec3f(3.1, 1.7, 0)));
+        const tint = std.select(BLOSSOM, BLOSSOM2, pick > 0.94);
+        const bloom = std.step(0.875, pick) * (1 - wood);
+        lit = std.mix(lit, tint, bloom);
+        shade = std.mix(shade, std.mul(tint, 0.32), bloom);
+      }
+      let petal = d.vec3f(PETAL);
+      if (isFlower) {
+        const pick = B.whiteNoise(std.add(std.floor(std.mul(root, 3)), d.vec3f(5.3, 2.9, 0)));
+        petal = std.select(std.select(std.select(FLOWERS[0], FLOWERS[1], pick > 0.45), FLOWERS[2], pick > 0.72), FLOWERS[3], pick > 0.9);
+      }
       const flower = std.smoothstep(1.5, 1.9, leaf.$);
-      lit = std.mix(lit, PETAL, flower);
-      shade = std.mix(shade, std.mul(PETAL, 0.35), flower);
+      lit = std.mix(lit, petal, flower);
+      shade = std.mix(shade, std.mul(petal, 0.4), flower);
       if (hasTip) {
         lit = std.mix(lit, tipC, std.smoothstep(0.45, 1.0, sway.$));
       }

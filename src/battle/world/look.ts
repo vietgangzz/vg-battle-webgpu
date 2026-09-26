@@ -13,22 +13,22 @@ const n = (x: number, y: number, z: number): [number, number, number] => {
 };
 
 export const MORNING: Look = {
-  skyTop: [0.15, 0.3, 0.55],
-  skyHorizon: [0.78, 0.8, 0.74],
-  skyBelow: [0.36, 0.42, 0.38],
-  sunDir: n(-0.55, 0.45, 0.42),
-  sunColor: [1, 0.86, 0.66],
+  skyTop: [0.05, 0.25, 0.72],
+  skyHorizon: [0.6, 0.78, 0.95],
+  skyBelow: [0.3, 0.4, 0.36],
+  sunDir: n(-0.55, 0.45, 0.5),
+  sunColor: [1, 0.93, 0.8],
   sunSize: 1.4,
-  cloudTint: [1, 0.97, 0.92],
-  cloudCover: 0.38,
-  fogColor: [0.7, 0.76, 0.74],
-  fogDensity: 0.0038,
-  fogHeight: 7,
-  waterDeep: [0.02, 0.1, 0.08],
-  waterShallow: [0.1, 0.3, 0.24],
-  key: { dir: n(-0.55, 0.45, 0.62), color: [1, 0.9, 0.74], strength: 3.4 },
-  fill: { dir: n(0.5, -0.6, 0.4), color: [0.6, 0.75, 1], strength: 0.9 },
-  ambient: [0.05, 0.06, 0.065],
+  cloudTint: [1, 1, 1],
+  cloudCover: 0.5,
+  fogColor: [0.64, 0.77, 0.92],
+  fogDensity: 0.0014,
+  fogHeight: 14,
+  waterDeep: [0.02, 0.1, 0.12],
+  waterShallow: [0.1, 0.34, 0.32],
+  key: { dir: n(-0.55, 0.45, 0.7), color: [1, 0.95, 0.82], strength: 3.9 },
+  fill: { dir: n(0.5, -0.6, 0.4), color: [0.55, 0.72, 1], strength: 1.0 },
+  ambient: [0.06, 0.07, 0.08],
 };
 
 export const DUSK: Look = {

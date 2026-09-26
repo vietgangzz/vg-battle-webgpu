@@ -170,15 +170,23 @@ export function skyNode() {
       const s = B.whiteNoise(std.floor(std.mul(dir, 260)));
       col = std.add(col, d.vec3f(std.step(0.996, s) * U.stars.$ * std.saturate(z * 3)));
     }
-    // clouds on a plane high above: dir / z, drifting
-    const plane = std.div(dir.xy, std.max(z, 0.04) + 0.08);
-    const q = d.vec3f(plane.x * 0.55 + t * 0.012, plane.y * 0.55 + t * 0.004, t * 0.01);
-    const n = B.noise3(q, d.f32(1), d.f32(5), 0.55, d.f32(2), 0.4);
+    // cumulus on a plane high above (dir / z), drifting: puffy crisp edges, cel-shaded,
+    // the side away from the sun in cool shade (a second look toward the sun says how much cloud is in the way)
+    const plane = std.div(dir.xy, std.max(z, 0.04) + 0.12);
+    const q = d.vec3f(plane.x * 0.34 + t * 0.008, plane.y * 0.34 + t * 0.003, t * 0.006);
+    const n = B.noise3(q, d.f32(1), d.f32(5), 0.58, d.f32(2), 0.35);
     const cover = U.cloudCover.$;
-    const c = std.smoothstep(1 - cover, 1.2 - cover, n) * std.smoothstep(0.0, 0.18, z);
-    const lit = std.saturate(0.55 + std.dot(dir, U.sunDir.$) * 0.45);
-    const cloud = std.mix(std.mul(U.cloudTint.$, 0.62), std.add(U.cloudTint.$, std.mul(U.sunColor.$, 0.25)), lit);
-    col = std.mix(col, cloud, c * 0.9);
+    const c = std.smoothstep(1 - cover, 1.05 - cover, n) * std.smoothstep(0.0, 0.14, z);
+    const sq = d.vec3f(q.x + U.sunDir.$.x * 0.07, q.y + U.sunDir.$.y * 0.07, q.z);
+    const toward = B.noise3(sq, d.f32(1), d.f32(5), 0.58, d.f32(2), 0.35);
+    const shaded = std.smoothstep(0.0, 0.05, toward - n);
+    const litC = std.add(U.cloudTint.$, std.mul(U.sunColor.$, 0.18));
+    const shadeC = std.mix(U.skyTop.$, U.cloudTint.$, 0.62);
+    let cloud = std.mix(litC, shadeC, shaded * 0.85);
+    // a bright silver lining where the edge faces the sun
+    const rim = std.smoothstep(1 - cover, 1.02 - cover, n) - std.smoothstep(1.02 - cover, 1.1 - cover, n);
+    cloud = std.add(cloud, std.mul(U.sunColor.$, rim * (1 - shaded) * 0.25));
+    col = std.mix(col, cloud, c * 0.95);
     // the horizon melts into the fog colour
     col = std.mix(col, U.fogColor.$, std.pow(1 - std.abs(z), 10) * 0.8);
     return d.vec4f(col, 1);

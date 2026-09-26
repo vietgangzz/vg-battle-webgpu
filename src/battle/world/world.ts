@@ -8,6 +8,7 @@ import * as THREE from "three/webgpu";
 import { water } from "../game/shading";
 import type { FilmScene } from "../runtime/scene";
 import { Heightfield, type WorldData, type WorldMesh } from "./data";
+import { Meadow } from "./grass";
 import { haloMaterial, heroMaterial, karstMaterial, lampMaterial, mistMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
 
 /** Plants that only matter up close (and never in the water's reflection). */
@@ -33,6 +34,8 @@ export class World {
   readonly group = new THREE.Group();
   readonly ground: Heightfield;
   private readonly chunks: { mesh: THREE.Mesh; center: THREE.Vector3; radius: number; near: number }[] = [];
+  /** the dense grass and flowers round the camera (the scattered grass tufts are left out for it) */
+  private readonly meadow: Meadow;
 
   constructor(
     readonly data: WorldData,
@@ -90,7 +93,11 @@ export class World {
     }
 
     const mats = new Map<PlantLook, THREE.Material>();
+    this.meadow = new Meadow(data, this.ground, m.colliders, NO_REFLECT);
+    this.group.add(this.meadow.group);
+
     for (const inst of m.instances) {
+      if (inst.name === "grass") continue;
       const look = LOOK[inst.name] ?? "shrub";
       let mat = mats.get(look);
       if (!mat) {
@@ -157,6 +164,7 @@ export class World {
 
   /** Draw only the plant chunks near enough to the camera to be seen. */
   update(camera: THREE.Vector3) {
+    this.meadow.update(camera);
     for (const c of this.chunks) c.mesh.visible = c.center.distanceTo(camera) - c.radius < c.near;
   }
 

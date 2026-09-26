@@ -289,6 +289,9 @@ export class Explore {
   leave() {
     const fs = this.player.fs;
     this.world.group.visible = false;
+    // the film and the stages are graded as filmed
+    this.player.post.grade.saturation.value = 1;
+    this.player.post.grade.contrast.value = 1;
     fs.setExternal(this.externals, false);
     fs.setExternal(["kage_body", "kage_eye0", "kage_eye1", "kage_band", "kage_hand_r", "kage_hand_l", "kage_blade", "kage_tail0", "kage_tail1", "kage_ghost1", "kage_ghost2", "kage_ghost3"], false);
     fs.drive("motes.Time", false);
@@ -676,6 +679,9 @@ export class Explore {
     if (Math.abs(this.dusk - this.shownDusk) < 0.002) return;
     this.shownDusk = this.dusk;
     applyLook(this.player.fs, mixLook(MORNING, DUSK, this.dusk));
+    // the valley is painted rich: fuller colour and a little more punch than the film
+    this.player.post.grade.saturation.value = 1.2 - 0.06 * this.dusk;
+    this.player.post.grade.contrast.value = 1.1;
     LAMP.strength.node.value = 1 + 0.7 * this.dusk;
   }
 

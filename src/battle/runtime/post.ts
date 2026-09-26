@@ -45,6 +45,11 @@ export class Post {
   private readonly seam = T.uniform(0.0);
   /** the unfold's progressive blur: the newly opened outer edges resolve last (0 = off) */
   private readonly unfoldBlur = T.uniform(0.0);
+  /**
+   * The game's own grade on top of the film's: extra saturation, and contrast
+   * as a power curve round mid grey (1 = as filmed). The film leaves both at 1.
+   */
+  readonly grade = { saturation: T.uniform(1.0), contrast: T.uniform(1.0) };
   private readonly focus = T.uniform(3.0);
   private readonly range = T.uniform(1.0);
   private readonly bokeh = T.uniform(1.0);
@@ -101,7 +106,8 @@ export class Post {
       // ---- lens: barrel distortion with per-channel dispersion (Blender Lens Distortion, Fit on)
       const c5 = lens(T.convertToTexture(c4), distortion, dispersion);
       // ---- grade, invert, flash
-      const c6 = T.saturation(c5, saturation);
+      const c5c = T.mul(T.pow(T.div(T.max(c5, 0.0), 0.18), this.grade.contrast), 0.18);
+      const c6 = T.saturation(c5c, T.mul(saturation, this.grade.saturation));
       const c7 = T.mix(c6, T.sub(1.0, c6), impact);
       const flashCol = T.vec3(1.0, 0.95, 0.9);
       const c8 = T.sub(1.0, T.mul(T.add(T.sub(1.0, flash), T.mul(flash, T.sub(1.0, flashCol))), T.sub(1.0, c7)));
