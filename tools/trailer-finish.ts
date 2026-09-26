@@ -1,9 +1,9 @@
 /**
- * Finishes the trailer filmed by tools/trailer.ts: lays the title cards over
- * the footage (rendered at 4K with ImageMagick, faded in and out), mixes the
- * sound (the film's score, twice: a rise into SORA's reveal and one under the
- * close; and every sound the fight made, at the moment it made it), and
- * encodes the 4K master and a 1080p copy for sharing.
+ * Finishes the trailer filmed by tools/trailer.ts: lays the few cards over
+ * the footage (the two ultimates' names, the title; rendered at 4K with
+ * ImageMagick, faded in and out), mixes the sound (every sound the fight
+ * made, at the moment it made it, with a whoosh and a boom under each
+ * ultimate and the title), and encodes the 4K master and a 1080p copy.
  *
  *   node tools/run.mjs tools/trailer-finish.ts
  *   -> tools/.out/trailer/little-giant-trailer-4k.mp4, little-giant-trailer-1080p.mp4
@@ -82,64 +82,26 @@ function card(name: string, start: number, end: number, lines: { text: string; s
   list.push({ file, start, end });
 }
 
-// a lime rule under a lower third
-const lowerThird = (name: string, start: number, end: number, title: string, sub: string) =>
-  card(
-    name,
-    start,
-    end,
-    // (bottom-up: the small line under the title)
-    [
-      { text: sub, size: 44, font: UI, fill: LIME, spacing: 10 },
-      { text: title, size: 92, font: SERIF, fill: IVORY, spacing: 6 },
-    ],
-    "SouthWest",
-    200,
-    170,
-    ["-fill", LIME, "-draw", `rectangle ${px(160)},${H - Math.round(470 * k)} ${px(172)},${H - Math.round(170 * k)}`],
-  );
-const centre = (name: string, start: number, end: number, title: string, sub: string, size = 170) =>
-  card(
-    name,
-    start,
-    end,
-    [
-      { text: title, size, font: UI, fill: IVORY, spacing: 28 },
-      { text: sub, size: 54, font: UI, fill: LIME, spacing: 14 },
-    ],
-    "Center",
-    0,
-    -60,
-  );
-
 const s = (id: string) => shot(id);
-centre("c01-studio", 0.8, 5.2, "VGANG STUDIO", "PRESENTS", 120);
-lowerThird("c02-place", s("s02-").start + 0.4, s("s02-").start + s("s02-").seconds - 0.2, "Tràng An · Ninh Bình", "A WORLD HERITAGE VALLEY IN VIỆT NAM");
-lowerThird("c03-thuydinh", s("s02b").start + 1.0, s("s02b").start + s("s02b").seconds - 0.4, "Thủy Đình", "THE WATER PAVILION");
-centre("c04-sora", s("s04").start + 0.9, s("s04").start + s("s04").seconds - 0.1, "SORA", "THE LITTLE GIANT");
-lowerThird("c05-hill", s("s05b").start + 1.0, s("s05b").start + s("s05b").seconds - 0.4, "Chùa Tràng An", "PAGODAS · BAMBOO · KARST · RIVERS");
-centre("c06-journey", s("s07").start + 0.2, s("s07").start + s("s07").seconds, "A JOURNEY ACROSS VIỆT NAM", "", 120);
-centre("c07-fight", s("s08").start + 0.6, s("s08").start + 3.2, "FIGHT THE SHADOWS", "SLASH · DASH · KIẾM KHÍ", 150);
-centre("c08-pierce", s("s10").start + 0.2, s("s10").start + 2.4, "HEAVEN PIERCE", "", 150);
-centre("c09-tempest", s("s11").start + 1.4, s("s11").start + 4.4, "SEN BÃO", "LOTUS TEMPEST · CHARGE IT TWICE", 190);
-centre("c10-level", s("s12").start + 0.3, s("s12").start + s("s12").seconds - 0.1, "LEVEL UP", "SIX SKILLS TO MASTER", 150);
-lowerThird("c11-tech", s("s13").start + 0.6, s("s13").start + s("s13").seconds - 0.3, "React Native · WebGPU", "RENDERED LIVE · 60 FPS ON IPHONE");
+// only the two ultimates are named, low in the frame (SORA and the effect stay clear), after their flash
+const skillCard = (name: string, start: number, end: number, title: string) =>
+  card(name, start, end, [{ text: title, size: 150, font: UI, fill: IVORY, spacing: 26 }], "South", 0, 250);
+skillCard("c01-pierce", s("s05").start + 1.3, s("s05").start + s("s05").seconds - 0.2, "HEAVEN PIERCE");
+skillCard("c02-tempest", s("s06").start + 1.9, s("s06").start + s("s06").seconds - 0.2, "SEN BÃO");
 
-// the title: dimmed frame, the vgang wordmark, the name
+// the title over her close-up: the vgang wordmark and the name, nothing else
 {
-  const t = s("s14");
+  const t = s("s08");
   const wm = `${cards}/wordmark.png`;
-  run("rsvg-convert", ["-w", px(900), "../vg-showcase-demo/battle/assets/wordmark_lime.svg", "-o", wm]);
-  const file = `${cards}/c12-title.png`;
+  run("rsvg-convert", ["-w", px(620), "../vg-showcase-demo/battle/assets/wordmark_lime.svg", "-o", wm]);
+  const file = `${cards}/c03-title.png`;
   run("magick", [
-    "-size", `${W}x${H}`, "radial-gradient:#00000055-#000000c8",
-    "(", wm, ")", "-gravity", "Center", "-geometry", at(0, -330), "-composite",
-    "(", "+size", "-background", "none", "-font", UI, "-pointsize", px(230), "-kerning", px(40), "-fill", IVORY, "label:LITTLE GIANT", ")", "-gravity", "Center", "-geometry", at(0, 20), "-composite",
-    "(", "+size", "-background", "none", "-font", SERIF, "-pointsize", px(66), "-kerning", px(18), "-fill", LIME, "label:A JOURNEY ACROSS VIỆT NAM", ")", "-gravity", "Center", "-geometry", at(0, 210), "-composite",
-    "(", "+size", "-background", "none", "-font", UI, "-pointsize", px(46), "-kerning", px(16), "-fill", IVORY, "label:COMING SOON  -  VGANG.STUDIO", ")", "-gravity", "Center", "-geometry", at(0, 420), "-composite",
+    "-size", `${W}x${H}`, "gradient:#00000000-#000000b0",
+    "(", wm, ")", "-gravity", "South", "-geometry", at(0, 470), "-composite",
+    "(", "+size", "-background", "none", "-font", UI, "-pointsize", px(210), "-kerning", px(40), "-fill", IVORY, "label:LITTLE GIANT", ")", "-gravity", "South", "-geometry", at(0, 190), "-composite",
     file,
   ]);
-  list.push({ file, start: t.start + 1.2, end: total + 1 });
+  list.push({ file, start: t.start + 0.9, end: total + 1 });
 }
 
 // --cards: only the cards (to look at them)
@@ -165,26 +127,41 @@ const add = (src: Float32Array, at: number, gain: number, fadeIn = 0, fadeOut = 
     mixBuf[j + 1] += src[i * 2 + 1] * g;
   }
 };
-// the score: quiet, then a long rise. Once rising into SORA's reveal, once under the close.
-const score = decode("assets/film/sfx.m4a");
-const scoreLen = score.length / 2 / RATE;
-const reveal = s("s04").start + 1.0;
-add(score, reveal - scoreLen, 3.2, 0, 1.2);
-add(score, total - scoreLen + 0.6, 3.2, 2.0, 1.5);
-// the fight's own sounds, where they happened (from the fight on; a name at most every 60 ms)
-const GAIN: Record<string, number> = { swing: 0.45, hit: 0.7, heavy: 0.85, slam: 1, clash: 0.8, wave: 0.6, dash: 0.5, block: 0.4, down: 0.5 };
+/** a synthesised sound: `fn(t)` for `seconds` (mono, both channels) */
+const synth = (seconds: number, fn: (t: number) => number) => {
+  const n = Math.round(seconds * RATE);
+  const b = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) b[i * 2] = b[i * 2 + 1] = fn(i / RATE);
+  return b;
+};
+let seed = 7;
+const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+/** a low boom: a sine falling from 90 to 40 Hz, a fast knock and a long tail */
+const boom = synth(1.8, (t) => Math.sin(2 * Math.PI * (40 * t + 25 * (1 - Math.exp(-t * 6)))) * Math.exp(-t * 2.4) * Math.min(1, t * 400));
+/** a rising whoosh into an ultimate: noise swelling, brighter as it climbs */
+let lp = 0;
+const riser = synth(1.3, (t) => {
+  const k = t / 1.3;
+  lp += (noise() - lp) * (0.02 + 0.35 * k * k);
+  return lp * k * k * 1.6;
+});
+// the fight's own sounds, where they happened (a name at most every 60 ms)
+const GAIN: Record<string, number> = { swing: 0.5, hit: 0.75, heavy: 0.9, slam: 1, clash: 0.8, wave: 0.65, dash: 0.55, block: 0.3, down: 0.5 };
 const bank: Record<string, Float32Array> = {};
 const last: Record<string, number> = {};
-const fightFrom = s("s08").start;
 for (const e of tl.sounds) {
-  if (e.t < fightFrom || e.t > s("s13").start) continue;
+  if (e.t > s("s08").start + 0.3) continue;
   if (last[e.n] !== undefined && e.t - last[e.n] < 0.06) continue;
   last[e.n] = e.t;
   bank[e.n] ??= decode(`assets/sfx/${e.n}.m4a`);
   add(bank[e.n], e.t, GAIN[e.n] ?? 0.5);
 }
-// a boom on the title
-add(decode("assets/sfx/slam.m4a"), s("s14").start + 1.2, 1.1);
+// the weight under the ultimates and the title
+add(riser, s("s05").start - 1.0, 0.5);
+add(boom, s("s05").start + 1.05, 0.9);
+add(riser, s("s06").start - 0.9, 0.55);
+add(boom, s("s06").start + 1.1, 1.0);
+add(boom, s("s08").start + 0.9, 0.8);
 writeFileSync(`${dir}/mix.f32`, Buffer.from(mixBuf.buffer));
 
 // ---------------------------------------------------------------- picture + cards + sound
@@ -201,8 +178,9 @@ list.forEach((c, i) => {
   );
   last_ = `[v${i}]`;
 });
-filters.push(`${last_}fade=t=in:st=0:d=0.8,fade=t=out:st=${(total - 1.2).toFixed(2)}:d=1.2,format=yuv420p[vout]`);
-filters.push(`[1:a]afade=t=out:st=${(total - 1.5).toFixed(2)}:d=1.5,loudnorm=I=-14:TP=-1.0:LRA=11[aout]`);
+filters.push(`${last_}fade=t=in:st=0:d=0.25,fade=t=out:st=${(total - 1.2).toFixed(2)}:d=1.2,format=yuv420p[vout]`);
+// a gentle glue and a limiter (no loudness normaliser: its gain rode the quiet opening up)
+filters.push(`[1:a]afade=t=out:st=${(total - 1.5).toFixed(2)}:d=1.5,acompressor=threshold=-20dB:ratio=3:attack=4:release=150:makeup=2,alimiter=limit=0.89[aout]`);
 const master = `${dir}/little-giant-trailer-4k.mp4`;
 run("ffmpeg", [
   "-y", "-v", "error", ...inputs,

@@ -1382,9 +1382,13 @@ export class Explore {
    * and she fights them on her own: blades up close, kiếm khí from afar, the
    * ultimate whenever it is ready. `packs` of them at once (a crowd: 3 or 4).
    */
-  brawl(packs = 1) {
+  brawl(packs = 1, auto = true) {
     this.brawling = Math.max(0, Math.min(5, Math.floor(packs)));
+    this.brawlAuto = auto;
   }
+
+  /** whether SORA fights on her own in the benchmark (off: only the packs are brought, for a scripted fight) */
+  private brawlAuto = true;
 
   private autoBrawl(dt: number) {
     if (!this.brawling || this.phase !== "roam") return;
@@ -1410,6 +1414,10 @@ export class Explore {
       out++;
     }
     this.brawlT -= dt;
+    if (!this.brawlAuto) {
+      hero.hp = Math.max(hero.hp, hero.maxHp * 0.5);
+      return;
+    }
     if (this.brawlT > 0 || hero.hp <= 0) return;
     // she never falls in a benchmark
     hero.hp = Math.max(hero.hp, hero.maxHp * 0.5);
