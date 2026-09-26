@@ -222,6 +222,10 @@ export class FilmScene {
     B.quality.volumeOctaves = quality.volumeOctaves;
     const man = film.manifest;
     this.cuts = man.cuts;
+    // targets' colour attachments are named "output": a material with its own MRT (the valley's
+    // see-through effects, see Post.keepDistance) finds where its colour goes by that name
+    this.sceneTarget.texture.name = "output";
+    this.volumeTarget.texture.name = "output";
     this.camera.up.set(0, 0, 1);
 
     // the wet ground mirrors the scene; roughness picks between a sharp and a blurred mip
@@ -230,7 +234,14 @@ export class FilmScene {
       const r = TSL.reflector({ resolutionScale: quality.reflectionScale, generateMipmaps: true });
       this.scene.add(r.target);
       // redrawn every `reflectEvery` frames (the game halves it; the film keeps every frame)
-      const base = r.reflector as unknown as { updateBefore: (frame: unknown) => unknown };
+      const base = r.reflector as unknown as { updateBefore: (frame: unknown) => unknown; getRenderTarget: (c: unknown) => THREE.RenderTarget };
+      // its target's colour is "output", like every target here (see Post.keepDistance)
+      const target = base.getRenderTarget.bind(base);
+      base.getRenderTarget = (c) => {
+        const rt = target(c);
+        rt.texture.name = "output";
+        return rt;
+      };
       const redraw = base.updateBefore.bind(base);
       let n = 0;
       base.updateBefore = (frame) => (++n % this.reflectEvery === 0 ? redraw(frame) : undefined);

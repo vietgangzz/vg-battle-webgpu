@@ -72,7 +72,17 @@ export class Post {
    * buffer cannot be read back): the outlines and the far blur read it.
    */
   readonly gameTarget = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, count: 2, samples: 4 });
-  private readonly gameMRT = T.mrt({ output: T.output, dist: T.vec4(T.positionView.z.negate(), 0, 0, 1) });
+  /**
+   * Each pixel's distance from the lens, written by what is solid only: a
+   * see-through material (a glow, a spark, a trail) writes zero with zero
+   * alpha, which under its own blending leaves the distance behind it as it
+   * was (else every sprite's quad would draw an outline).
+   */
+  private readonly solid = T.float(1).sub(T.materialReference("transparent", "float"));
+  private readonly gameMRT = T.mrt({
+    output: T.output,
+    dist: T.vec4(T.mul(T.positionView.z.negate(), this.solid), 0, 0, this.solid),
+  });
   /** outline strength, the far blur's and the sharpening's (0 = off) */
   readonly look = { ink: T.uniform(0.75), far: T.uniform(1), sharpen: T.uniform(0.9) };
 
@@ -84,6 +94,9 @@ export class Post {
     // MRT outputs find their attachments by name
     this.gameTarget.textures[0].name = "output";
     this.gameTarget.textures[1].name = "dist";
+    // the distance blends as each material does: an opaque one writes it, a see-through one (writing
+    // nothing, alpha 0, see keepDistance) leaves what is behind it
+    this.gameMRT.setBlendMode("dist", new THREE.BlendMode(THREE.MaterialBlending));
     const post = film.manifest.post;
     const knob = (key: string, def: number) => {
       const tr = post[key] ? film.track(post[key]) : undefined;

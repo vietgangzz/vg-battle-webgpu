@@ -257,7 +257,8 @@ export class Bolts {
       const e = 1 - (1 - u.t) ** 3;
       u.sprite.scale.setScalar(0.6 + 3.4 * e * (u.sprite.userData.size as number));
       u.fade.value = (1 - u.t) ** 1.5;
-      u.flash.scale.setScalar(2.4 * (u.sprite.userData.size as number) * (1 - u.t * 0.6));
+      // the flash stays a flash: a big ring does not make a sun
+      u.flash.scale.setScalar(2.4 * Math.min(u.sprite.userData.size as number, 1.6) * (1 - u.t * 0.6));
       u.flashFade.value = Math.max(0, 1 - u.t * 2.2);
       if (u.t >= 1) u.sprite.visible = u.flash.visible = false;
     }

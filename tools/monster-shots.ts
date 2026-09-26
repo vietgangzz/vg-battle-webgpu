@@ -53,6 +53,20 @@ game.start(true);
 await renderer.compileAsync(fs.scene, fs.camera);
 const pack = PACKS[packIndex];
 // stand 20 m from the pack, facing it
+if (process.argv.includes("--noink")) (post as unknown as { look: { ink: { value: number } } }).look.ink.value = 0;
+if (process.argv.includes("--nosharp")) (post as unknown as { look: { sharpen: { value: number } } }).look.sharpen.value = 0;
+if (process.argv.includes("--mrtcheck")) {
+  const rows = new Map<string, number>();
+  fs.scene.traverse((o) => {
+    const mats = (o as import("three/webgpu").Mesh).material;
+    if (!mats) return;
+    for (const m of Array.isArray(mats) ? mats : [mats]) {
+      const k = `${m.type} transparent=${m.transparent} blend=${m.blending} dw=${m.depthWrite} mrt=${!!(m as { mrtNode?: unknown }).mrtNode}`;
+      rows.set(k, (rows.get(k) ?? 0) + 1);
+    }
+  });
+  console.log([...rows].map(([k, v]) => `${v} ${k}`).join("\n"));
+}
 const hero = game.hero;
 const from = new THREE.Vector3(pack.x - 20, pack.y - 6, 0);
 hero.place(from, 0);
