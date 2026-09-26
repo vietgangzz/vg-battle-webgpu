@@ -24,7 +24,7 @@ export default function Game() {
         </View>
       }
     >
-      <GameView autostart={explore === "1"} brawl={brawl === "1"} />
+      <GameView autostart={explore === "1"} brawl={Number(brawl) || 0} />
     </Suspense>
   );
 }

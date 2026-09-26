@@ -164,7 +164,19 @@ export class World {
     fs.camera.layers.enable(NO_REFLECT);
     this.group.visible = false;
     fs.scene.add(this.group);
+    // nothing built here ever moves: its matrices are worked out once, not on every pass
+    this.group.updateMatrixWorld(true);
+    this.group.matrixAutoUpdate = false;
+    for (const c of this.group.children) {
+      c.traverse((o) => {
+        o.matrixAutoUpdate = false;
+      });
+      this.frozen.add(c);
+    }
   }
+
+  /** The world's own pieces, which stand still (see Explore.updateMatrices). */
+  readonly frozen = new Set<THREE.Object3D>();
 
   /** A hero piece's painted texture: RGB rows from the blob, widened to RGBA, mipmapped. */
   private texture(t: { o: number; w: number; h: number }) {

@@ -93,7 +93,7 @@ function putList(sv: SharedValue<number[]>, v: ArrayLike<number>) {
   sv.value = copy;
 }
 
-export function GameView({ autostart = false, brawl = false }: { autostart?: boolean; brawl?: boolean }) {
+export function GameView({ autostart = false, brawl = 0 }: { autostart?: boolean; brawl?: number }) {
   useKeepAwake();
   const [fontsLoaded] = useFonts({ ManropeSemiBold: require("../../assets/fonts/Manrope-SemiBold.ttf") });
   const ref = useRef<CanvasRef>(null);
@@ -225,8 +225,8 @@ export function GameView({ autostart = false, brawl = false }: { autostart?: boo
     if (!autostart || autostarted.current || !roam || view !== "menu") return;
     autostarted.current = true;
     startExplore(true);
-    // ?brawl=1: the fight benchmark
-    if (brawl) roam.game.brawl();
+    // ?brawl=N: the fight benchmark, N packs at once
+    if (brawl) roam.game.brawl(brawl);
   }, [autostart, brawl, roam, view, startExplore]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {

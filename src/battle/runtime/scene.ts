@@ -126,6 +126,8 @@ interface Placed {
   /** drawn only while one of these is non-zero (every material is provably blank at 0) */
   gates?: ScalarUniform[];
   overlay?: boolean;
+  /** a particle system (see FilmScene.idleParticles) */
+  particle?: boolean;
   deform?: { data: Float32Array; frames: number; verts: number; attr: THREE.BufferAttribute; geo: THREE.BufferGeometry };
 }
 
@@ -193,6 +195,19 @@ export class FilmScene {
   private readonly params = new Map<string, ScalarUniform>();
   private readonly materialsOf = new Map<string, string[]>();
   private readonly particleNames = new Set<string>();
+  /**
+   * The game's setting: particle systems no clip is playing (the ambient
+   * group) are not drawn, except the ones named here. The film leaves this
+   * null: at its frame every system is where the film put it. Each costs a
+   * draw (and another in any reflection) even with nothing alive in it.
+   */
+  idleParticles: Set<string> | null = null;
+  /** redraw the mirrored scene every this many frames (the game: 2, at 60 fps the lag does not show in rippled water) */
+  reflectEvery = 1;
+  /** every object the film animates (effects, particles, the fighters' parts) */
+  get placedObjects() {
+    return this.placed.map((p) => p.obj);
+  }
   private readonly ambientBase = new THREE.Vector3(0.02, 0.009, 0.009);
   private skyGain?: Track;
   private skyFlash?: Track;
@@ -213,6 +228,11 @@ export class FilmScene {
     if (quality.reflectionScale > 0) {
       const r = TSL.reflector({ resolutionScale: quality.reflectionScale, generateMipmaps: true });
       this.scene.add(r.target);
+      // redrawn every `reflectEvery` frames (the game halves it; the film keeps every frame)
+      const base = r.reflector as unknown as { updateBefore: (frame: unknown) => unknown };
+      const redraw = base.updateBefore.bind(base);
+      let n = 0;
+      base.updateBefore = (frame) => (++n % this.reflectEvery === 0 ? redraw(frame) : undefined);
       reflection = [t3.fromTSL(r.level(TSL.float(0)).rgb, d.vec3f), t3.fromTSL(r.level(TSL.float(5)).rgb, d.vec3f)];
     }
     this.reflection = reflection;
@@ -277,7 +297,7 @@ export class FilmScene {
       mesh.frustumCulled = false;
       mesh.matrixAutoUpdate = false;
       this.scene.add(mesh);
-      this.placed.push({ name: pm.name, obj: mesh, xf: new Xf(film, pm.xf), group: 0, external: false, billboard: false });
+      this.placed.push({ name: pm.name, obj: mesh, xf: new Xf(film, pm.xf), group: 0, external: false, billboard: false, particle: true });
       this.particleNames.add(pm.name);
     }
 
@@ -461,6 +481,7 @@ export class FilmScene {
       if (p.overlay) p.obj.matrix.scale(this.overlayScale);
       if (p.vis) p.obj.visible = p.vis.value(frame) > 0.5;
       if (p.gates && p.obj.visible) p.obj.visible = p.gates.some((g) => g.value !== 0);
+      if (p.particle && this.idleParticles) p.obj.visible = p.group !== 0 || this.idleParticles.has(p.name);
       if (p.deform && p.obj.visible) this.deform(p.deform, frame);
     }
 

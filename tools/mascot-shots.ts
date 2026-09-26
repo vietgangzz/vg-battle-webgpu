@@ -67,6 +67,12 @@ await shot({ eye: front(2.6, 0, 1.0), at: [0, 0, 0.75], tan: 0.42 });
 await shot({ eye: front(2.2, 1.6, 1.3), at: [0, 0, 0.75], tan: 0.42 });
 await shot({ eye: front(-2.6, 0.4, 1.2), at: [0, 0, 0.8], tan: 0.42 });
 await shot({ eye: front(0.2, 2.8, 0.9), at: [0, 0, 0.75], tan: 0.42 });
+// the headband all the way round, close: her right, back-right, back-left, left
+if (process.argv.includes("--band")) {
+  n = 20;
+  for (const [d, side] of [[0.3, -1.7], [-1.2, -1.2], [-1.2, 1.2], [0.3, 1.7], [1.4, -0.9]] as const) await shot({ eye: front(d, side, 1.35), at: [0, 0, 1.0], tan: 0.3 });
+  process.exit(0);
+}
 // running: side view mid-stride, then the game's own camera
 await run(0.6, [0, 1]);
 await shot({ eye: [3.2, 1.2, 1.0], at: [0, 0, 0.75], tan: 0.42 });

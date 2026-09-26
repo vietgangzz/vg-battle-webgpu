@@ -208,7 +208,7 @@ export class Meadow {
 
   /** Regrow round the camera when it has moved far enough. */
   update(camera: THREE.Vector3) {
-    if (this.last.distanceTo(new THREE.Vector2(camera.x, camera.y)) < STEP) return;
+    if (Math.hypot(this.last.x - camera.x, this.last.y - camera.y) < STEP) return;
     this.last.set(camera.x, camera.y);
     this.fill(camera);
   }

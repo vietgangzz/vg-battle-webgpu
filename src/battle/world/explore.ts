@@ -32,7 +32,7 @@ import type { WorldData } from "./data";
 import { DUSK, MORNING, mixLook } from "./look";
 import { FOCUS, LAMP } from "./shaders";
 import { OrbitCamera } from "./orbit";
-import { World } from "./world";
+import { NO_REFLECT, World } from "./world";
 
 export type ExplorePhase = "title" | "roam" | "camp" | "bossIntro" | "boss" | "clear" | "results" | "defeat";
 
@@ -285,6 +285,8 @@ export class Explore {
     for (const s of m.spirits) {
       const mesh = new THREE.Mesh(spiritGeo, spiritMat);
       mesh.position.set(s.x, s.y, s.z);
+      // a few pixels across the water: not worth a draw in the reflection
+      mesh.layers.set(NO_REFLECT);
       this.world.group.add(mesh);
       this.spirits.push({ mesh, home: new THREE.Vector3(s.x, s.y, s.z), found: false });
     }
@@ -346,6 +348,7 @@ export class Explore {
     const fs = this.player.fs;
     const m = this.world.data.manifest;
     this.world.group.visible = true;
+    this.quietParticles(true);
     this.player.post.setLite(true);
     applyLook(fs, MORNING);
     this.shownDusk = -1;
@@ -421,6 +424,7 @@ export class Explore {
     if (!this.backdropOn) {
       this.backdropOn = true;
       this.world.group.visible = true;
+      this.quietParticles(true);
       player.post.setLite(true);
       fs.setExternal(this.externals, true);
       this.hero.remove();
@@ -456,6 +460,7 @@ export class Explore {
       this.cloud.value = (now / 1000) * 0.05;
       fs.setCamera(eye, at, Math.max(0.42, 0.46 / player.view.aspect), player.view);
       this.world.update(eye);
+      this.updateMatrices();
     }, now);
   }
 
@@ -464,6 +469,7 @@ export class Explore {
     this.backdropOn = false;
     const fs = this.player.fs;
     this.world.group.visible = false;
+    this.quietParticles(false);
     // the film and the stages are graded as filmed, through the full chain
     this.player.post.setLite(false);
     this.player.post.grade.saturation.value = 1;
@@ -723,6 +729,10 @@ export class Explore {
     const t = this.clock;
     for (const sp of this.spirits) {
       if (sp.found) continue;
+      // past a few dozen metres a spirit is a speck: not drawn (each is a draw of its own)
+      const far = Math.abs(sp.home.x - hero.pos.x) + Math.abs(sp.home.y - hero.pos.y) > 80;
+      sp.mesh.visible = !far;
+      if (far) continue;
       sp.mesh.position.set(sp.home.x + Math.sin(t * 0.9 + sp.home.y) * 0.3, sp.home.y + Math.cos(t * 0.7 + sp.home.x) * 0.3, sp.home.z + Math.sin(t * 1.7 + sp.home.x) * 0.25);
       sp.mesh.scale.setScalar(1 + 0.2 * Math.sin(t * 5 + sp.home.x));
       if (hero.pos.distanceTo(sp.mesh.position) < 1.8) {
@@ -928,6 +938,7 @@ export class Explore {
     this.world.update(this.camera.position);
     this.updateBars();
     this.updateWaypoint();
+    this.updateMatrices();
     this.events.meters?.(this.meters);
   }
 
@@ -1163,8 +1174,43 @@ export class Explore {
     });
   }
 
+  /**
+   * The film's thirty-odd particle systems each cost a draw every frame (and
+   * another in the river's reflection) even with nothing alive in them: in
+   * the valley only the ones a playing clip drives are drawn, and no effect
+   * is drawn in the reflection.
+   */
+  private quietParticles(on: boolean) {
+    const fs = this.player.fs;
+    fs.idleParticles = on ? new Set(["motes"]) : null;
+    // the river mirrors the valley, SORA and the monsters; the film's effects (sparks, rings, the
+    // ultimate's eighty rising slabs) are drawn once, not twice
+    for (const o of fs.placedObjects) o.layers.set(on && !o.name.startsWith("sora_") ? NO_REFLECT : 0);
+    // the matrices are brought up to date once a frame here (updateMatrices), not by the renderer on every pass
+    fs.scene.matrixWorldAutoUpdate = !on;
+    fs.reflectEvery = on ? 2 : 1;
+  }
+
+  /**
+   * Every matrix in the scene, once a frame. Left to the renderer, the whole
+   * scene (a thousand objects, most of them the world's, which never move)
+   * would be walked and multiplied again for each pass that draws it: the
+   * river's reflection as well as the picture. Hidden things are skipped:
+   * anything shown this frame has been shown by now.
+   */
+  private updateMatrices() {
+    const scene = this.player.fs.scene;
+    const world = this.world;
+    for (const c of scene.children) {
+      if (!c.visible) continue;
+      if (c !== world.group) c.updateMatrixWorld(true);
+      else for (const w of c.children) if (w.visible && !world.frozen.has(w)) w.updateMatrixWorld(true);
+    }
+  }
+
   // ---------------------------------------------------------------- benchmark
-  private brawling = false;
+  /** packs kept on SORA at once in the benchmark (0: off) */
+  private brawling = 0;
   private brawlNext = 0;
   private brawlT = 0;
 
@@ -1172,22 +1218,34 @@ export class Explore {
    * A repeatable fight for measuring frame rate (opened with ?brawl=1): pack
    * after pack is set down a few strides ahead of SORA, already hunting her,
    * and she fights them on her own: blades up close, kiếm khí from afar, the
-   * ultimate whenever it is ready.
+   * ultimate whenever it is ready. `packs` of them at once (a crowd: 3 or 4).
    */
-  brawl(on = true) {
-    this.brawling = on;
+  brawl(packs = 1) {
+    this.brawling = Math.max(0, Math.min(5, Math.floor(packs)));
   }
 
   private autoBrawl(dt: number) {
     if (!this.brawling || this.phase !== "roam") return;
     const hero = this.hero;
-    if (!this.packs.some((p) => p.state === "out")) {
+    // any pack still out but far off is sent home first: the fight is here
+    for (const p of this.packs)
+      if (p.state === "out" && Math.hypot(p.x - hero.pos.x, p.y - hero.pos.y) > 25) {
+        for (const m of this.monsters) if (m.pack === this.packs.indexOf(p)) { m.remove(); m.pack = -1; }
+        p.state = "asleep";
+      }
+    let out = this.packs.filter((p) => p.state === "out").length;
+    for (let tries = 0; out < this.brawling && tries < this.packs.length; tries++) {
       const i = this.brawlNext++ % this.packs.length;
       const p = this.packs[i];
-      p.x = hero.pos.x + Math.cos(hero.yaw) * 9;
-      p.y = hero.pos.y + Math.sin(hero.yaw) * 9;
+      if (p.state !== "asleep") continue;
+      // round her, a few strides off, each pack from its own side
+      const a = Math.atan2(hero.forward.y, hero.forward.x) + out * 2.1;
+      p.x = hero.pos.x + Math.cos(a) * 9;
+      p.y = hero.pos.y + Math.sin(a) * 9;
       this.spawnPack(i);
+      if ((p.state as Pack["state"]) !== "out") continue;
       for (const m of this.monsters) if (m.pack === i) m.aggro = true;
+      out++;
     }
     this.brawlT -= dt;
     if (this.brawlT > 0 || hero.hp <= 0) return;
