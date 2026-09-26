@@ -6,10 +6,14 @@ module.exports = {
     // follow the device: portrait, landscape, and the unfolded inner display
     orientation: "default",
     userInterfaceStyle: "dark",
+    icon: "./assets/images/icon.png",
+    version: "1.0.0",
     backgroundColor: "#000000",
     ios: {
-      // the personal team signs device builds
+      // the team signs device builds and the TestFlight uploads (scripts/testflight.sh)
       appleTeamId: "SL53MJAWWY",
+      // only the standard HTTPS the OS provides: no export compliance paperwork per build
+      config: { usesNonExemptEncryption: false },
       bundleIdentifier: "studio.vgang.battle",
       supportsTablet: true,
       requireFullScreen: true,
