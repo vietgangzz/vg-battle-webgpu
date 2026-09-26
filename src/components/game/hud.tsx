@@ -270,10 +270,11 @@ export const PlayerPanel = memo(function PlayerPanel({
       <View style={[styles.bars, { pointerEvents: "none" }]}>
         <View style={styles.nameRow}>
           <Text style={styles.name}>SORA</Text>
-          <Text style={styles.hpText}>
-            {Math.max(0, hp)}
-            <Text style={styles.hpMax}> / {max}</Text>
-          </Text>
+          {/* on a dark pill: legible over bright sky and grass alike */}
+          <View style={styles.hpPill}>
+            <Text style={[styles.hpText, frac <= 0.3 && { color: ORANGE }]}>{Math.max(0, hp)}</Text>
+            <Text style={styles.hpMax}>/ {max}</Text>
+          </View>
         </View>
         <SlantBar frac={frac} color={frac > 0.3 ? LIME : ORANGE} width={188} height={12} />
         <View style={styles.energyTrack}>
@@ -452,6 +453,8 @@ export function Slash({ width = 220, color = LIME }: { width?: number; color?: s
   );
 }
 
+/** a tight dark edge for small text over a bright scene (the soft glow blurs it away) */
+const crisp = { textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } };
 export const textShadow = { textShadowColor: "rgba(0,0,0,0.65)", textShadowRadius: 12, textShadowOffset: { width: 0, height: 2 } };
 
 const styles = StyleSheet.create({
@@ -560,10 +563,21 @@ const styles = StyleSheet.create({
   xpFill: { height: "100%", backgroundColor: GOLD },
   xpText: { color: IVORY, opacity: 0.75, fontFamily: UI_FONT, fontSize: 8, ...textShadow },
   bars: { gap: 5 },
-  nameRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", width: 188 },
-  name: { color: IVORY, fontFamily: UI_FONT, fontSize: 13, letterSpacing: 4, ...textShadow },
-  hpText: { color: IVORY, fontFamily: UI_FONT, fontSize: 11, letterSpacing: 1, ...textShadow },
-  hpMax: { opacity: 0.55, fontSize: 9 },
+  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: 188 },
+  name: { color: IVORY, fontFamily: UI_FONT, fontSize: 13, letterSpacing: 4, ...crisp },
+  hpPill: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 9,
+    backgroundColor: "rgba(10,12,14,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(245,243,232,0.22)",
+  },
+  hpText: { color: "#FFFFFF", fontFamily: UI_FONT, fontSize: 14, letterSpacing: 0.5, fontVariant: ["tabular-nums"] },
+  hpMax: { color: IVORY, opacity: 0.75, fontFamily: UI_FONT, fontSize: 10, fontVariant: ["tabular-nums"] },
   slant: {
     backgroundColor: "rgba(18,22,25,0.6)",
     borderWidth: 1,
