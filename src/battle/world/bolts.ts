@@ -189,7 +189,7 @@ export class Bolts {
     this.beam = { sprite: beam, fade: bm.fade, tint: bm.tint, t: 1 };
     for (let i = 0; i < BURSTS; i++) {
       const ring = softMaterial(LIME, 3.2, true);
-      const flash = softMaterial([1, 1, 0.85], 3.5);
+      const flash = softMaterial([1, 1, 0.85], 2.2);
       const sprite = new THREE.Sprite(ring.m);
       const fl = new THREE.Sprite(flash.m);
       sprite.visible = fl.visible = false;
@@ -297,7 +297,7 @@ export class Bolts {
       u.sprite.scale.setScalar(0.6 + 3.4 * e * (u.sprite.userData.size as number));
       u.fade.value = (1 - u.t) ** 1.5;
       // the flash stays a flash: a big ring does not make a sun
-      u.flash.scale.setScalar(2.4 * Math.min(u.sprite.userData.size as number, 1.6) * (1 - u.t * 0.6));
+      u.flash.scale.setScalar(2.4 * Math.min(u.sprite.userData.size as number, 1.1) * (1 - u.t * 0.6));
       u.flashFade.value = Math.max(0, 1 - u.t * 2.2);
       if (u.t >= 1) u.sprite.visible = u.flash.visible = false;
     }

@@ -1164,7 +1164,6 @@ export class Explore {
     const yaw = Math.atan2(me.forward.y, me.forward.x);
     // the spring: pink rings off the ground under her
     this.bolts.groundRing(V.set(me.pos.x, me.pos.y, me.groundZ), 5, true);
-    this.bolts.ring(V.set(me.pos.x, me.pos.y, me.pos.z + 0.8), 3, true);
     ring(yaw);
     this.after(0.3, () => ring(yaw + Math.PI / 10));
     this.after(0.62, () => {
