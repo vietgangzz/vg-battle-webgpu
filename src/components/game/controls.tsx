@@ -19,7 +19,7 @@ import Svg, { Circle, Path } from "react-native-svg";
 
 import { SKILL_COOLDOWN } from "@/battle/game/combat";
 
-import { BladeIcon, BloomIcon, DashIcon, GuardIcon, JumpIcon, StreakIcon } from "./icons";
+import { BladeIcon, BloomIcon, DashIcon, GuardIcon, JumpIcon, StreakIcon, WaveIcon } from "./icons";
 import { INK, IVORY, LIME, UI_FONT } from "./theme";
 
 const ACircle = Animated.createAnimatedComponent(Circle);
@@ -35,11 +35,13 @@ export interface Pad {
   skill(): void;
   ult(): void;
   finish(): void;
+  /** throw kiếm khí (the valley has it; the stage roads do not) */
+  shoot?(): void;
   /** turn the camera (a drag on the right side, off the buttons), in points */
   look?(dx: number, dy: number): void;
 }
 
-export type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish";
+export type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish" | "shoot";
 
 interface Button {
   id: ButtonId;
@@ -64,6 +66,7 @@ const CLUSTER: Button[] = [
   { id: "skill", ...at(270, 90), r: 30 },
   { id: "ult", ...at(236, 168), r: 33 },
   { id: "guard", ...at(186, 164), r: 25 },
+  { id: "shoot", ...at(211, 166), r: 28 },
 ];
 const FINISH: Button = { id: "finish", ...at(232, 250), r: 48 };
 /** attack button centre from the bottom-right corner */
@@ -91,10 +94,13 @@ export function Controls({
   finishable,
   size: scale = 1,
   onPress,
+  shot,
 }: {
   pad: Pad;
   energy: SharedValue<number>;
   skill: SharedValue<number>;
+  /** kiếm khí cooldown (0..1), when the pad can shoot */
+  shot?: SharedValue<number>;
   ultReady: boolean;
   finishable: boolean;
   /** control size setting (0.85 / 1 / 1.15) */
@@ -130,9 +136,10 @@ export function Controls({
     const k = scale * fit;
     const cx = size.width - ANCHOR.right * fit - sideR;
     const cy = size.height - ANCHOR.bottom * fit - insets.bottom;
-    const list = finishable ? [...CLUSTER, FINISH] : CLUSTER;
+    const cluster = CLUSTER.filter((b) => b.id !== "shoot" || !!pad.shoot);
+    const list = finishable ? [...cluster, FINISH] : cluster;
     return list.map((b) => ({ ...b, r: b.r * k, x: cx + b.dx * k, y: cy + b.dy * k }));
-  }, [size, insets.bottom, sideR, finishable, scale]);
+  }, [size, insets.bottom, sideR, finishable, scale, pad]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -190,6 +197,7 @@ export function Controls({
         else if (b === "skill") pad.skill();
         else if (b === "ult") pad.ult();
         else if (b === "finish") pad.finish();
+        else if (b === "shoot") pad.shoot?.();
         continue;
       }
       const { width, height } = frame.current;
@@ -281,7 +289,7 @@ export function Controls({
       <Stick baseX={baseX} baseY={baseY} knobX={knobX} knobY={knobY} active={active} />
       <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }, cluster]}>
         {buttons.map((b) => (
-          <ActionButton key={b.id} b={b} down={!!pressed[b.id]} energy={energy} skill={skill} ultReady={ultReady} />
+          <ActionButton key={b.id} b={b} down={!!pressed[b.id]} energy={energy} skill={b.id === "shoot" && shot ? shot : skill} ultReady={ultReady} />
         ))}
       </Animated.View>
     </View>
@@ -350,6 +358,7 @@ const ICONS: Record<ButtonId, (color: string, r: number) => ReactNode> = {
   skill: (c, r) => <StreakIcon size={r * 0.95} color={c} />,
   ult: (c, r) => <BloomIcon size={r * 1.25} color={c} />,
   finish: (c, r) => <BloomIcon size={r * 0.95} color={c} />,
+  shoot: (c, r) => <WaveIcon size={r * 1.0} color={c} />,
 };
 
 /**
@@ -375,7 +384,9 @@ function ActionButton({
   const S = r * 2 + PAD * 2;
   const c = S / 2;
   const id = b.id;
-  const isSkill = id === "skill";
+  // the skill and the kiếm khí both wear their cooldown on the face (only the skill counts seconds)
+  const isSkill = id === "skill" || id === "shoot";
+  const counts = id === "skill";
   const isUlt = id === "ult";
   const finish = id === "finish";
   const solid = finish || (isUlt && ultReady);
@@ -473,7 +484,7 @@ function ActionButton({
         {/* pressed: the face fills with light */}
         <Animated.View style={[styles.lit, { left: PAD, top: PAD, width: r * 2, height: r * 2, borderRadius: r }, solid && styles.litSolid, lit]} />
         <Animated.View style={[StyleSheet.absoluteFill, styles.center, iconStyle]}>{ICONS[id](iconColor, r)}</Animated.View>
-        {isSkill && (
+        {counts && (
           <Animated.View style={[StyleSheet.absoluteFill, styles.center, secondsStyle]}>
             <AnimatedText editable={false} underlineColorAndroid="transparent" style={[styles.seconds, { fontSize: r * 0.6 }]} animatedProps={seconds} defaultValue="" />
           </Animated.View>

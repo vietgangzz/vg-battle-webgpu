@@ -16,10 +16,12 @@ export interface Save {
   unlocked: number;
   best: Record<string, Results["rank"]>;
   settings: Settings;
+  /** SORA's level in the valley and her experience toward the next */
+  hero: { level: number; xp: number };
 }
 
 const RANKS = ["C", "B", "A", "S"];
-const EMPTY: Save = { unlocked: 0, best: {}, settings: { sfx: true, haptics: true, buttons: 1 } };
+const EMPTY: Save = { unlocked: 0, best: {}, settings: { sfx: true, haptics: true, buttons: 1 }, hero: { level: 1, xp: 0 } };
 
 const file = () => new File(Paths.document, "little-giant-save.json");
 
@@ -28,7 +30,7 @@ function load(): Save {
     const f = file();
     if (!f.exists) return EMPTY;
     const s = JSON.parse(f.textSync()) as Partial<Save>;
-    return { ...EMPTY, ...s, settings: { ...EMPTY.settings, ...s.settings } };
+    return { ...EMPTY, ...s, settings: { ...EMPTY.settings, ...s.settings }, hero: { ...EMPTY.hero, ...s.hero } };
   } catch {
     return EMPTY;
   }
@@ -70,5 +72,8 @@ export function useSave() {
 
   const setSettings = useCallback((p: Partial<Settings>) => update((s) => ({ ...s, settings: { ...s.settings, ...p } })), [update]);
 
-  return { save, record, setSettings };
+  /** SORA's level and experience (kept as she earns it). */
+  const setHero = useCallback((level: number, xp: number) => update((s) => ({ ...s, hero: { level, xp } })), [update]);
+
+  return { save, record, setSettings, setHero };
 }

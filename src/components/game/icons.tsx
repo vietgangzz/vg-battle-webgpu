@@ -65,6 +65,16 @@ export function StreakIcon({ size = 24, color = IVORY }: IconProps) {
   );
 }
 
+/** Kiếm khí: a crescent of sword light flying out, with its wake. */
+export function WaveIcon({ size = 24, color = IVORY }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 48 48">
+      <Path d="M27 8 C38 13 42 26 36 39 C34 29 29 19 17 12 C21 10 24 9 27 8 Z" fill={color} />
+      <Path d="M8 30 H22 M5 22 H17 M10 38 H26" {...stroke(color, 2.6)} opacity={0.55} />
+    </Svg>
+  );
+}
+
 /** The bloom: the film's closing flower, for the ultimate. */
 export function BloomIcon({ size = 30, color = IVORY }: IconProps) {
   const petal = "M24 7.5 C28.6 13.4 28.6 20.2 24 24 C19.4 20.2 19.4 13.4 24 7.5 Z";

@@ -24,6 +24,14 @@ const env = await setup(W, H);
 const { fs, post, framing, tick, grab, renderer } = env;
 const { WorldData } = await import("../src/battle/world/data");
 const { Explore } = await import("../src/battle/world/explore");
+const { buildCreatures } = await import("../src/battle/world/creature");
+const cman = JSON.parse(readFileSync("src/battle/gen/creatures.json", "utf8"));
+const cblobs: Record<string, ArrayBuffer> = {};
+for (const name of Object.keys(cman.creatures)) {
+  const b = readFileSync(`assets/creatures/${name}.bin`);
+  cblobs[name] = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+}
+const creatures = buildCreatures(cman, cblobs);
 
 const manifest = JSON.parse(readFileSync("src/battle/gen/world-ninh-binh.json", "utf8"));
 const bin = readFileSync("assets/world/ninh-binh.bin");
@@ -44,11 +52,11 @@ const log: string[] = [];
 let lastHud = "";
 const game = new Explore(player as never, data, {
   hud: (s) => {
-    const k = `${s.phase} hp=${s.hp} ${s.banner} ${s.toast} shrines=${s.objectives.shrines} camps=${s.objectives.camps} spirits=${s.objectives.spirits} boss=${s.boss?.hp ?? "-"}`;
+    const k = `${s.phase} hp=${s.hp} ${s.banner} ${s.toast} shrines=${s.objectives.shrines} camps=${s.objectives.camps} spirits=${s.objectives.spirits} boss=${s.boss?.hp ?? "-"} lv=${s.level} xp=${s.xp}/${s.xpNext}`;
     if (k !== lastHud) log.push(`${t.toFixed(1)} ${k}`);
     lastHud = k;
   },
-});
+}, creatures);
 game.start(true);
 await renderer.compileAsync(fs.scene, fs.camera);
 
@@ -99,6 +107,12 @@ for (t = 0; t <= until; t += 1 / 60) {
   const wx = d > (foe ? 2.3 : 0.5) ? dx / d : 0;
   const wy = d > (foe ? 2.3 : 0.5) ? dy / d : 0;
   game.setStick(wx * Math.sin(yaw) - wy * Math.cos(yaw), wx * Math.cos(yaw) + wy * Math.sin(yaw));
+  // from range, throw kiếm khí
+  const near = hero.target;
+  if (near && hero.pos.distanceTo(near.pos) > 4.5 && hero.pos.distanceTo(near.pos) < 16 && t > press) {
+    game.shoot();
+    press = t + 0.5;
+  }
   if (foe && hero.pos.distanceTo(foe.pos) < 3.2 && t > press) {
     game.attack();
     press = t + 0.38;

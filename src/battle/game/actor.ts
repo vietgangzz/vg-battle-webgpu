@@ -83,6 +83,9 @@ export class Actor {
   scale: number;
   hp: number;
   maxHp: number;
+  /** the fighter's level (the valley's wild shadows grow stronger deeper in), and how hard it hits */
+  level = 1;
+  power = 1;
   pose: Pose = P.IDLE;
   action: Action | null = null;
   /** world-space wish direction and strength (0..1), from the stick or the AI */

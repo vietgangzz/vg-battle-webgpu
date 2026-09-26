@@ -12,7 +12,7 @@ import { Meadow } from "./grass";
 import { haloMaterial, heroMaterial, karstMaterial, lampMaterial, mistMaterial, type PlantLook, plantMaterial, propMaterial, terrainMaterial } from "./shaders";
 
 /** Plants that only matter up close (and never in the water's reflection). */
-const NEAR: Record<string, number> = { grass: 45, rice: 80, reed: 70, shrub: 110, lotus: 90, karstShrub: 400, boulder: 140 };
+const NEAR: Record<string, number> = { grass: 45, rice: 80, reed: 70, shrub: 110, lotus: 90, karstShrub: 400, boulder: 140, tree0: 180, tree1: 180, tree2: 180, bamboo: 120, banana: 90 };
 const LOOK: Record<string, PlantLook> = {
   tree0: "tree",
   tree1: "tree",
@@ -29,11 +29,36 @@ const LOOK: Record<string, PlantLook> = {
 };
 /** Layer the reflection camera does not see (grass and small plants). */
 export const NO_REFLECT = 1;
+/**
+ * Meshy pieces are merged per 48 m cell; small things are drawn only this near
+ * (m), and only the big ones are mirrored in the river.
+ */
+const HERO_NEAR: Record<string, number> = {
+  lily_pads: 70,
+  water_jars: 50,
+  bamboo_fence: 70,
+  incense_burner: 70,
+  cattail_reeds: 80,
+  lotus_cluster: 90,
+  stone_lantern: 90,
+  village_well: 90,
+  nghe_statue: 90,
+  water_buffalo: 110,
+  haystack: 130,
+  areca_palm: 160,
+  bamboo_clump: 180,
+  farmer_hut: 220,
+};
+const HERO_REFLECT = new Set(["pagoda_hall", "tam_quan_gate", "bell_tower", "village_house", "banyan_shrine", "boat_pier", "sampan", "village_gate", "bamboo_clump", "farmer_hut"]);
 
 export class World {
   readonly group = new THREE.Group();
   readonly ground: Heightfield;
   private readonly chunks: { mesh: THREE.Mesh; center: THREE.Vector3; radius: number; near: number }[] = [];
+  /** lantern halos, drawn only near the camera (each is a draw call) */
+  private readonly halos: THREE.Sprite[] = [];
+  /** one texture and one material per Meshy piece, however many cells use them (by blob offset) */
+  private readonly heroMats = new Map<number, THREE.Material>();
   /** the dense grass and flowers round the camera (the scattered grass tufts are left out for it) */
   private readonly meadow: Meadow;
 
@@ -46,19 +71,29 @@ export class World {
     const geos = m.meshes.map((me) => this.geometry(me));
 
     for (const s of m.statics) {
-      const mat =
-        s.kind === "terrain"
-          ? terrainMaterial()
-          : s.kind === "karst"
-            ? karstMaterial()
-            : s.kind === "hero" && s.tex
-              ? heroMaterial(this.texture(s.tex))
-              : s.kind === "glow"
-                ? lampMaterial()
-                : propMaterial();
+      let mat: THREE.Material;
+      if (s.kind === "terrain") mat = terrainMaterial();
+      else if (s.kind === "karst") mat = karstMaterial();
+      else if (s.kind === "glow") mat = lampMaterial();
+      else if (s.kind === "hero" && s.tex) {
+        const tex = s.tex;
+        mat = this.heroMats.get(tex.o) ?? heroMaterial(this.texture(tex));
+        this.heroMats.set(tex.o, mat);
+      } else mat = propMaterial();
       const mesh = new THREE.Mesh(geos[s.mesh], mat);
       mesh.name = `world:${s.name}`;
       mesh.frustumCulled = s.kind !== "terrain";
+      if (s.kind === "hero") {
+        const kind = s.name.slice(5).split("@")[0];
+        if (!HERO_REFLECT.has(kind)) mesh.layers.set(NO_REFLECT);
+        const near = HERO_NEAR[kind];
+        if (near !== undefined) {
+          const sphere = geos[s.mesh].boundingSphere!;
+          this.chunks.push({ mesh, center: sphere.center.clone(), radius: sphere.radius, near });
+        }
+      }
+      // the lanterns burn on in the river's mirror only as halos
+      if (s.kind === "glow") mesh.layers.set(NO_REFLECT);
       this.group.add(mesh);
     }
 
@@ -90,6 +125,7 @@ export class World {
       sp.renderOrder = 6;
       sp.name = "world:halo";
       this.group.add(sp);
+      this.halos.push(sp);
     }
 
     const mats = new Map<PlantLook, THREE.Material>();
@@ -165,6 +201,7 @@ export class World {
   /** Draw only the plant chunks near enough to the camera to be seen. */
   update(camera: THREE.Vector3) {
     this.meadow.update(camera);
+    for (const h of this.halos) h.visible = h.position.distanceToSquared(camera) < 75 * 75;
     for (const c of this.chunks) c.mesh.visible = c.center.distanceTo(camera) - c.radius < c.near;
   }
 
@@ -193,6 +230,16 @@ export class World {
       if (hit > 0 && hit < t) t = hit;
     }
     return t;
+  }
+
+  /** Is this point inside something solid (a house, a tower's foot, the hall)? */
+  solidAt(p: THREE.Vector3) {
+    for (const c of this.data.manifest.colliders) {
+      const dx = p.x - c.x;
+      const dy = p.y - c.y;
+      if (dx * dx + dy * dy < c.r * c.r && p.z < this.ground.at(c.x, c.y) + 12) return true;
+    }
+    return false;
   }
 
   /** Push a point out of anything solid (karst feet, houses, the hall) and keep it out of deep water. */

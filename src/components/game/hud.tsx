@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, {
   Easing,
   FadeInDown,
   FadeOut,
   type SharedValue,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -19,7 +20,7 @@ import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Rect, Stop } f
 import { BAR_SLOTS, type HudState, type Pop } from "@/battle/game/adventure";
 
 import { ChevronIcon, LittleGiant, PauseIcon } from "./icons";
-import { CRIMSON, INK, IVORY, LIME, ORANGE, UI_FONT } from "./theme";
+import { CRIMSON, GOLD, INK, IVORY, LIME, ORANGE, UI_FONT } from "./theme";
 
 /**
  * Everything drawn over the fight: SORA's medallion with health and energy,
@@ -78,26 +79,30 @@ export function Hud({
 }
 
 // ---------------------------------------------------------------- over the shadows' heads
-export function Markers({ bars }: { bars: SharedValue<number[]> }) {
+export function Markers({ bars, levels }: { bars: SharedValue<number[]>; levels?: SharedValue<number[]> }) {
   return (
     <View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]}>
       {Array.from({ length: BAR_SLOTS }, (_, i) => (
-        <Marker key={i} slot={i} bars={bars} />
+        <Marker key={i} slot={i} bars={bars} levels={levels} />
       ))}
     </View>
   );
 }
 
-function Marker({ slot, bars }: { slot: number; bars: SharedValue<number[]> }) {
+const ALevel = Animated.createAnimatedComponent(TextInput);
+
+function Marker({ slot, bars, levels }: { slot: number; bars: SharedValue<number[]>; levels?: SharedValue<number[]> }) {
   const box = useAnimatedStyle(() => {
     const k = slot * 4;
     const b = bars.value;
     return { left: `${b[k] * 100}%`, top: `${b[k + 1] * 100}%`, opacity: b[k + 3] };
   });
   const fill = useAnimatedStyle(() => ({ width: `${bars.value[slot * 4 + 2] * 100}%` }));
+  const level = useAnimatedProps(() => ({ text: levels ? `Lv ${levels.value[slot] ?? 0}` : "" }) as never);
   return (
     <Animated.View style={[styles.marker, box]}>
       <Animated.View style={[styles.markerFill, fill]} />
+      {levels && <ALevel editable={false} underlineColorAndroid="transparent" style={styles.markerLevel} animatedProps={level} defaultValue="" />}
     </Animated.View>
   );
 }
@@ -114,10 +119,12 @@ export function DamagePop({ pop, onDone }: { pop: Pop; onDone: (id: number) => v
     opacity: t.value < 0.7 ? 1 : 1 - (t.value - 0.7) / 0.3,
     transform: [{ translateX: drift * t.value }, { translateY: -46 * t.value }, { scale: t.value < 0.12 ? 0.6 + t.value * 5 : 1.2 - t.value * 0.25 }],
   }));
-  const color = pop.kind === "hurt" ? CRIMSON : pop.kind === "crit" ? ORANGE : pop.kind === "block" ? IVORY : pop.kind === "parry" ? LIME : "#FFFFFF";
-  const text = pop.kind === "parry" ? "PARRY!" : pop.kind === "block" ? `${pop.value}` : `${pop.value}${pop.kind === "crit" ? "!" : ""}`;
+  const color =
+    pop.kind === "hurt" ? CRIMSON : pop.kind === "crit" ? ORANGE : pop.kind === "block" ? IVORY : pop.kind === "parry" ? LIME : pop.kind === "xp" ? GOLD : "#FFFFFF";
+  const text =
+    pop.kind === "parry" ? "PARRY!" : pop.kind === "xp" ? `+${pop.value} EXP` : pop.kind === "block" ? `${pop.value}` : `${pop.value}${pop.kind === "crit" ? "!" : ""}`;
   return (
-    <Animated.Text style={[styles.pop, { left: `${pop.x * 100}%`, top: `${pop.y * 100}%`, color }, pop.kind === "crit" && styles.popCrit, style]}>
+    <Animated.Text style={[styles.pop, { left: `${pop.x * 100}%`, top: `${pop.y * 100}%`, color }, pop.kind === "crit" && styles.popCrit, pop.kind === "xp" && styles.popXp, style]}>
       {text}
     </Animated.Text>
   );
@@ -172,7 +179,28 @@ function Hint({ text, bottom }: { text: string; bottom: number }) {
 }
 
 // ---------------------------------------------------------------- SORA
-export function PlayerPanel({ hp, max, energy, ready, top, left }: { hp: number; max: number; energy: SharedValue<number>; ready: boolean; top: number; left: number }) {
+export function PlayerPanel({
+  hp,
+  max,
+  energy,
+  ready,
+  top,
+  left,
+  level,
+  xp,
+  xpNext,
+}: {
+  hp: number;
+  max: number;
+  energy: SharedValue<number>;
+  ready: boolean;
+  top: number;
+  left: number;
+  /** the RPG's level and experience (the valley); the stage roads have none */
+  level?: number;
+  xp?: number;
+  xpNext?: number;
+}) {
   const frac = Math.max(0, hp / max);
   const hurt = useSharedValue(0);
   const last = useRef(hp);
@@ -204,6 +232,11 @@ export function PlayerPanel({ hp, max, energy, ready, top, left }: { hp: number;
         </Svg>
         <LittleGiant size={40} />
         <Animated.View style={[styles.medalFlash, flash]} />
+        {level !== undefined && (
+          <View style={styles.levelBadge}>
+            <Text style={styles.levelText}>{level}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.bars}>
         <View style={styles.nameRow}>
@@ -220,6 +253,17 @@ export function PlayerPanel({ hp, max, energy, ready, top, left }: { hp: number;
             <View key={i} style={[styles.energyTick, { left: `${(i + 1) * 20}%` }]} />
           ))}
         </View>
+        {level !== undefined && xpNext ? (
+          <View style={styles.xpRow}>
+            <Text style={styles.xpLabel}>Lv {level}</Text>
+            <View style={styles.xpTrack}>
+              <View style={[styles.xpFill, { width: `${Math.min(100, ((xp ?? 0) / xpNext) * 100)}%` }]} />
+            </View>
+            <Text style={styles.xpText}>
+              {xp ?? 0}/{xpNext}
+            </Text>
+          </View>
+        ) : null}
         <Animated.Text style={[styles.ready, readyStyle]}>ULTIMATE READY</Animated.Text>
       </View>
     </Animated.View>
@@ -384,8 +428,23 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   markerFill: { height: "100%", backgroundColor: CRIMSON },
+  markerLevel: {
+    position: "absolute",
+    left: -30,
+    top: -5,
+    width: 28,
+    padding: 0,
+    textAlign: "right",
+    color: IVORY,
+    fontFamily: UI_FONT,
+    fontSize: 9,
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 1 },
+  },
   pop: { position: "absolute", marginLeft: -30, width: 60, textAlign: "center", fontFamily: UI_FONT, fontSize: 18, ...textShadow },
   popCrit: { fontSize: 24 },
+  popXp: { fontSize: 13, width: 90, marginLeft: -45, letterSpacing: 1 },
   progress: { position: "absolute", left: "26%", right: "26%" },
   progressTrack: { height: 3, borderRadius: 2, backgroundColor: "rgba(245,243,232,0.22)" },
   progressFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 2, backgroundColor: LIME },
@@ -411,6 +470,26 @@ const styles = StyleSheet.create({
   panel: { position: "absolute", flexDirection: "row", alignItems: "center", gap: 10 },
   medallion: { width: 62, height: 62, alignItems: "center", justifyContent: "center" },
   medalFlash: { position: "absolute", width: 58, height: 58, borderRadius: 29, backgroundColor: CRIMSON },
+  levelBadge: {
+    position: "absolute",
+    right: -4,
+    bottom: -4,
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 5,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: INK,
+    borderWidth: 1.5,
+    borderColor: GOLD,
+  },
+  levelText: { color: GOLD, fontFamily: UI_FONT, fontSize: 12 },
+  xpRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1 },
+  xpLabel: { color: GOLD, fontFamily: UI_FONT, fontSize: 9, letterSpacing: 1, ...textShadow },
+  xpTrack: { width: 110, height: 4, borderRadius: 2, backgroundColor: "rgba(18,22,25,0.6)", overflow: "hidden" },
+  xpFill: { height: "100%", backgroundColor: GOLD },
+  xpText: { color: IVORY, opacity: 0.75, fontFamily: UI_FONT, fontSize: 8, ...textShadow },
   bars: { gap: 5 },
   nameRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", width: 188 },
   name: { color: IVORY, fontFamily: UI_FONT, fontSize: 13, letterSpacing: 4, ...textShadow },

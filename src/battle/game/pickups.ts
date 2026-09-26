@@ -156,7 +156,7 @@ export class TargetRing {
     this.mesh.visible = this.shown > 0.02;
     if (!target) return;
     const s = target.scale * (0.8 + 0.2 * this.shown);
-    this.mesh.position.set(target.pos.x, target.pos.y, 0.03);
+    this.mesh.position.set(target.pos.x, target.pos.y, target.groundZ + 0.05);
     this.mesh.rotation.set(0, 0, this.spin);
     this.mesh.scale.setScalar(s);
   }

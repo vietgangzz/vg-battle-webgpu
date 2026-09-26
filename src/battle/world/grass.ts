@@ -14,8 +14,8 @@ import type { Heightfield, WorldData } from "./data";
 import { plantMaterial } from "./shaders";
 
 /** metres of meadow round the camera, and the lattice spacing */
-const RADIUS = 28;
-const CELL = 0.52;
+const RADIUS = 24;
+const CELL = 0.56;
 /** rebuild when the camera has moved this far */
 const STEP = 2.5;
 
@@ -33,14 +33,14 @@ function tuftGeometry(blades: number, height: number, seed: number) {
   const idx: number[] = [];
   let r = seed;
   const rnd = () => ((r = (r * 16807) % 2147483647) / 2147483647);
-  const SEG = 3;
+  const SEG = 2;
   for (let b = 0; b < blades; b++) {
     const yaw = rnd() * Math.PI * 2;
-    const lean = 0.18 + rnd() * 0.35;
-    const h = height * (0.6 + rnd() * 0.55);
-    const w = 0.035 + rnd() * 0.02;
-    const ox = (rnd() - 0.5) * 0.12;
-    const oy = (rnd() - 0.5) * 0.12;
+    const lean = 0.12 + rnd() * 0.28;
+    const h = height * (0.55 + rnd() * 0.6);
+    const w = 0.045 + rnd() * 0.03;
+    const ox = (rnd() - 0.5) * 0.22;
+    const oy = (rnd() - 0.5) * 0.22;
     const dx = Math.cos(yaw);
     const dy = Math.sin(yaw);
     // the blade's face is across its lean direction
@@ -56,8 +56,8 @@ function tuftGeometry(blades: number, height: number, seed: number) {
       const half = w * (1 - t * 0.92);
       pos.push(cx - px * half, cy - py * half, cz, cx + px * half, cy + py * half, cz);
       // normals tip toward the sky and out along the lean (soft, like a meadow seen from afar)
-      const nz = 0.75;
-      nrm.push(dx * 0.5, dy * 0.5, nz, dx * 0.5, dy * 0.5, nz);
+      const nz = 0.92;
+      nrm.push(dx * 0.35, dy * 0.35, nz, dx * 0.35, dy * 0.35, nz);
       leaf.push(1, 1);
       ao.push(0.25 + 0.75 * t, 0.25 + 0.75 * t);
       sway.push(t * t, t * t);
@@ -85,7 +85,7 @@ function flowerGeometry() {
   const ao: number[] = [];
   const sway: number[] = [];
   const idx: number[] = [];
-  const H = 0.42;
+  const H = 0.3;
   // stem: a thin card
   pos.push(-0.01, 0, 0, 0.01, 0, 0, 0.01, 0, H, -0.01, 0, H);
   for (let i = 0; i < 4; i++) nrm.push(0, -1, 0.3);
@@ -146,6 +146,20 @@ class Masks {
     for (let i = 0; i < this.bad.length; i++) {
       this.bad[i] = Math.max(path?.[i] ?? 0, wet?.[i] ?? 0, rock?.[i] ?? 0, field?.[i] ?? 0);
     }
+    // nothing grows on the bridge deck or the pagoda steps (the walkable height there is theirs, not the ground's)
+    for (const [[x0, y0], [x1, y1]] of [m.bridge, m.stairs]) {
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const len2 = dx * dx + dy * dy;
+      for (let j = 0; j < this.n; j++) {
+        for (let i = 0; i < this.n; i++) {
+          const x = this.x0 + i * this.cell;
+          const y = this.x0 + j * this.cell;
+          const t = Math.min(1, Math.max(0, ((x - x0) * dx + (y - y0) * dy) / len2));
+          if (Math.hypot(x - (x0 + dx * t), y - (y0 + dy * t)) < 3.2) this.bad[j * this.n + i] = 1;
+        }
+      }
+    }
   }
 
   /** 0 = lush, 1 = no grass here */
@@ -186,8 +200,8 @@ export class Meadow {
   ) {
     this.masks = new Masks(data);
     // a few tuft shapes would be nicer, but one shape turned and scaled per instance reads as a meadow already
-    this.grass = this.layer(tuftGeometry(7, 0.6, 7), plantMaterial("meadow"), 10000, noReflect);
-    this.flowers = this.layer(flowerGeometry(), plantMaterial("flower"), 2200, noReflect);
+    this.grass = this.layer(tuftGeometry(7, 0.34, 7), plantMaterial("meadow"), 7500, noReflect);
+    this.flowers = this.layer(flowerGeometry(), plantMaterial("flower"), 1600, noReflect);
   }
 
   private layer(base: THREE.BufferGeometry, mat: THREE.Material, cap: number, noReflect: number): Layer {
@@ -253,7 +267,7 @@ export class Meadow {
         const scale = (0.75 + 0.55 * hash(i, j, 4)) * edge * (0.45 + 0.55 * lush);
         if (scale < 0.05) continue;
         const yaw = hash(i, j, 5) * Math.PI * 2;
-        const flower = hash(i, j, 6) < 0.09 && dist < 24;
+        const flower = hash(i, j, 6) < 0.09 && dist < 20;
         if (flower && nf < this.flowers.cap) {
           const o = nf++ * 5;
           f[o] = x;

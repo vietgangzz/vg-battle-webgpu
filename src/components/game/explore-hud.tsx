@@ -18,6 +18,7 @@ export function ExploreHud({
   energy,
   combo,
   bars,
+  levels,
   map,
   pops,
   onPopDone,
@@ -28,6 +29,7 @@ export function ExploreHud({
   energy: SharedValue<number>;
   combo: SharedValue<number>;
   bars: SharedValue<number[]>;
+  levels: SharedValue<number[]>;
   map: SharedValue<number[]>;
   pops: Pop[];
   onPopDone: (id: number) => void;
@@ -46,15 +48,25 @@ export function ExploreHud({
       {playing && (
         <>
           <LowHealth low={state.hp > 0 && state.hp / state.maxHp < 0.3} />
-          <Markers bars={bars} />
+          <Markers bars={bars} levels={levels} />
           {pops.map((p) => (
             <DamagePop key={p.id} pop={p} onDone={onPopDone} />
           ))}
-          <PlayerPanel hp={state.hp} max={state.maxHp} energy={energy} ready={state.ultReady} top={top} left={left} />
+          <PlayerPanel
+            hp={state.hp}
+            max={state.maxHp}
+            energy={energy}
+            ready={state.ultReady}
+            top={top}
+            left={left}
+            level={state.level}
+            xp={state.xp}
+            xpNext={state.xpNext}
+          />
           {state.boss && <BossBar hp={state.boss.hp} max={state.boss.max} name={state.boss.name} title={state.boss.title} top={top + 78} />}
           <Minimap manifest={manifest} state={state} map={map} top={top + 50} right={right} />
           {/* the boss's bar takes the top of the screen; the tracker steps aside for the fight */}
-          {!state.boss && <Quests state={state} top={top + 96} left={left} />}
+          {!state.boss && <Quests state={state} top={top + 108} left={left} />}
           <Combo count={state.combo} timer={combo} />
           {!!state.toast && <Toast text={state.toast} top={landscape ? top + 4 : top + 50 + MAP + 70} />}
           <Pressable onPress={onPause} hitSlop={14} style={[styles.pause, { top, right }]}>

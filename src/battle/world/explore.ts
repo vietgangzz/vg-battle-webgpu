@@ -7,18 +7,26 @@
  *
  * Same fighters, moves, effects and combat as the stage roads (combat.ts);
  * the ground is the valley's terrain, the camera orbits under the thumb.
+ *
+ * It is also a small RPG: wild shadows roam the valley in packs, stronger
+ * the deeper in they lurk; every knockout is experience, and levels make SORA
+ * tougher and her blade heavier. Besides the blade she throws kiếm khí,
+ * crescents of sword light, at range.
  */
 import * as THREE from "three/webgpu";
 
 import { Actor, type Kind, yawOf } from "../game/actor";
-import { BossBrain, type Brain, BruteBrain, ShadeBrain, Tokens } from "../game/ai";
-import { COMBO_WINDOW, Combat, ENERGY_MAX, type Pop, SKILL_COOLDOWN, type SoundName } from "../game/combat";
+import { BossBrain, type Brain, BruteBrain, rng, ShadeBrain, Tokens } from "../game/ai";
+import { COMBO_WINDOW, Combat, ENERGY_MAX, type Pop, SHOOT_COOLDOWN, SKILL_COOLDOWN, type SoundName } from "../game/combat";
 import { applyLook } from "../game/environment";
 import { AMBIENT_FRAME, FxDirector } from "../game/fx";
-import { BOSS_ENTRY, SPAWN } from "../game/moves";
+import { BOLT_HIT, BOSS_ENTRY, SPAWN } from "../game/moves";
 import { Orbs, TargetRing } from "../game/pickups";
 import { Materials } from "../game/shading";
 import type { FilmPlayer } from "../runtime/player";
+import { Bolts } from "./bolts";
+import type { CreatureModel } from "./creature";
+import { Monster, type MonsterKind, PACKS, WaterOrbs } from "./monsters";
 import type { WorldData } from "./data";
 import { DUSK, MORNING, mixLook } from "./look";
 import { LAMP } from "./shaders";
@@ -50,14 +58,22 @@ export interface ExploreHud {
   toast: string;
   objectives: Objectives;
   results: { time: number; maxCombo: number; kos: number; damage: number; spirits: number; rank: "S" | "A" | "B" | "C" } | null;
+  /** SORA's level and her experience toward the next */
+  level: number;
+  xp: number;
+  xpNext: number;
 }
 
 export interface ExploreMeters {
   energy: number;
   skill: number;
+  /** the kiếm khí's cooldown (1 = just thrown) */
+  shot: number;
   combo: number;
   /** enemy health bars: x, y (screen fractions), health 0..1, opacity, per slot */
   bars: number[];
+  /** each bar's fighter level (0 = none) */
+  levels: number[];
   /** for the map: SORA's x, y and heading, the camera's heading (radians) */
   map: [number, number, number, number];
 }
@@ -67,11 +83,13 @@ export interface ExploreEvents {
   meters?: (m: ExploreMeters) => void;
   sound?: (name: SoundName) => void;
   pop?: (p: Pop) => void;
+  /** SORA levelled up, or gained experience (to keep) */
+  progress?: (level: number, xp: number, levelled: boolean) => void;
 }
 
 const DT = 1 / 60;
-const SHADES = 7;
-const BRUTES = 2;
+const SHADES = 10;
+const BRUTES = 3;
 const BAR_SLOTS = 8;
 const CAMP_WAKE = 15;
 const CAMP_LEASH = 34;
@@ -85,6 +103,28 @@ interface Foe {
   active: boolean;
   camp: number;
 }
+
+const PACK_WAKE = 38;
+const PACK_SLEEP = 62;
+const PACK_AGGRO = 16;
+const PACK_LEASH = 28;
+const PACK_RESPAWN = 45;
+const LEVEL_MAX = 30;
+/** experience for a knockout, before the foe's level */
+const XP: Record<Kind, number> = { hero: 0, shade: 10, brute: 26, captain: 160, boss: 160 };
+/** experience from one level to the next */
+export const xpNeed = (level: number) => Math.round(40 * level ** 1.55);
+
+interface Pack {
+  x: number;
+  y: number;
+  level: number;
+  kinds: MonsterKind[];
+  state: "asleep" | "out" | "gone";
+  t: number;
+}
+/** how many of each monster the valley can have out at once */
+const HERD: Record<MonsterKind, number> = { bandit: 8, river_demon: 5, golem: 3 };
 
 interface Camp {
   x: number;
@@ -111,6 +151,13 @@ export class Explore {
   private readonly orbs: Orbs;
   private readonly ring: TargetRing;
   private readonly camps: Camp[];
+  private readonly packs: Pack[];
+  readonly bolts: Bolts;
+  level = 1;
+  xp = 0;
+  private readonly wanderRng = rng(77);
+  private readonly monsters: Monster[] = [];
+  private readonly waterOrbs = new WaterOrbs();
   private readonly shrines: { x: number; y: number; z: number; lit: boolean; lamp: THREE.Mesh }[];
   private readonly spirits: { mesh: THREE.Mesh; home: THREE.Vector3; found: boolean }[] = [];
   private readonly checkpoint = new THREE.Vector3();
@@ -130,12 +177,21 @@ export class Explore {
   private readonly cloud;
   private hud: ExploreHud;
   private hudKey = "";
-  private readonly meters: ExploreMeters = { energy: 0, skill: 0, combo: 0, bars: new Array(BAR_SLOTS * 4).fill(0), map: [0, 0, 0, 0] };
+  private readonly meters: ExploreMeters = {
+    energy: 0,
+    skill: 0,
+    shot: 0,
+    combo: 0,
+    bars: new Array(BAR_SLOTS * 4).fill(0),
+    levels: new Array(BAR_SLOTS).fill(0),
+    map: [0, 0, 0, 0],
+  };
 
   constructor(
     readonly player: FilmPlayer,
     data: WorldData,
     private readonly events: ExploreEvents = {},
+    creatures: Map<string, CreatureModel> | null = null,
   ) {
     const fs = player.fs;
     this.world = new World(data, fs);
@@ -144,8 +200,10 @@ export class Explore {
     this.hero = new Actor(fs, "hero");
     this.boss = new Actor(fs, "captain");
     this.boss.remove();
-    for (let i = 0; i < SHADES; i++) this.foes.push({ actor: new Actor(fs, "shade"), brain: new ShadeBrain(31 + i * 7), active: false, camp: -1 });
-    for (let i = 0; i < BRUTES; i++) this.foes.push({ actor: new Actor(fs, "brute"), brain: new BruteBrain(9 + i * 3), active: false, camp: -1 });
+    const foe = (kind: Kind, brain: Brain): Foe => ({ actor: new Actor(fs, kind), brain, active: false, camp: -1 });
+    for (let i = 0; i < SHADES; i++) this.foes.push(foe("shade", new ShadeBrain(31 + i * 7)));
+    for (let i = 0; i < BRUTES; i++) this.foes.push(foe("brute", new BruteBrain(9 + i * 3)));
+    this.packs = PACKS.map((p) => ({ ...p, state: "asleep" as const, t: 0 }));
     for (const a of [this.hero, this.boss, ...this.foes.map((f) => f.actor)]) a.ground = ground;
     for (const f of this.foes) f.actor.remove();
     this.fx = new FxDirector(fs);
@@ -158,13 +216,27 @@ export class Explore {
       pop: (p) => this.events.pop?.(p),
       // the shattered ground settles, then clears so the way stays open
       ultimate: () => this.after(3, () => this.fx.release("pierce")),
+      shoot: (me) => this.throwBolt(me),
     });
+    this.bolts = new Bolts(
+      (x, y) => this.world.ground.at(x, y),
+      (p) => this.world.solidAt(p),
+    );
     this.externals = this.hero.objects;
     this.motesTime = fs.drive("motes.Time", false);
     this.cloud = fs.drive("world.cloud_w", false);
     this.orbs = new Orbs(this.mats);
     this.ring = new TargetRing(this.mats);
-    this.world.group.add(this.orbs.group, this.ring.mesh);
+    this.world.group.add(this.orbs.group, this.ring.mesh, this.bolts.group, this.waterOrbs.group);
+    // the wild monsters (when their models are loaded)
+    if (creatures) {
+      let seed = 5;
+      for (const kind of Object.keys(HERD) as MonsterKind[]) {
+        const model = creatures.get(kind);
+        if (!model) continue;
+        for (let i = 0; i < HERD[kind]; i++) this.monsters.push(new Monster(kind, model, this.world.group, (seed += 7)));
+      }
+    }
 
     const m = data.manifest;
     this.camps = m.markers
@@ -204,6 +276,9 @@ export class Explore {
       toast: "",
       objectives: { shrines: [0, 0], camps: [0, 0], spirits: [0, 0], boss: false, lit: [], cleared: [] },
       results: null,
+      level: 1,
+      xp: 0,
+      xpNext: xpNeed(1),
     };
   }
 
@@ -222,6 +297,9 @@ export class Explore {
   }
   ult() {
     this.combat.press("ult");
+  }
+  shoot() {
+    this.combat.press("shoot");
   }
   finish() {}
   setStick(x: number, y: number) {
@@ -250,12 +328,24 @@ export class Explore {
     fs.blobSource = (out) => this.blobs(out);
     this.fx.clear();
     this.orbs.clear();
+    this.bolts.clear();
     this.tokens.clear();
     for (const f of this.foes) {
       f.active = false;
+      f.camp = -1;
       f.actor.remove();
     }
+    for (const m of this.monsters) {
+      m.remove();
+      m.pack = -1;
+    }
+    this.waterOrbs.clear();
+    for (const p of this.packs) {
+      p.state = "asleep";
+      p.t = 0;
+    }
     this.boss.remove();
+    this.applyLevel();
     if (fresh) {
       const spawn = m.markers.find((k) => k.type === "spawn")!;
       this.checkpoint.set(spawn.at[0], spawn.at[1], 0);
@@ -298,6 +388,9 @@ export class Explore {
     fs.drive("world.cloud_w", false);
     fs.blobSource = null;
     this.fx.clear();
+    this.bolts.clear();
+    this.waterOrbs.clear();
+    for (const m of this.monsters) m.remove();
     fs.resetGroups();
     for (const f of this.foes) f.actor.remove();
     this.boss.remove();
@@ -353,10 +446,14 @@ export class Explore {
     for (const f of this.foes) if (f.active) f.actor.target = hero;
     this.boss.target = hero;
     if (dt > 0) {
+      this.updatePacks(dt);
       for (const f of this.foes) {
         if (!f.active || f.actor.dead) continue;
         this.combat.obey(f.actor, f.brain.update(dt, this.time, f.actor, hero, this.tokens), hero);
       }
+      const ctx = this.monsterCtx;
+      for (const m of this.monsters) m.update(dt, this.time, hero, ctx);
+      this.waterOrbs.update(dt);
       if (this.phase === "boss" && !this.boss.dead) this.combat.obey(this.boss, this.bossBrain.update(dt, this.time, this.boss, hero), hero);
     }
 
@@ -368,6 +465,10 @@ export class Explore {
     for (const f of this.foes) if (f.active) this.combat.resolve(f.actor);
     this.separate();
 
+    this.bolts.update(dt, this.targets(), (foe) => {
+      (foe as unknown as Monster).aggro = true;
+      this.combat.blast(this.hero, foe, BOLT_HIT);
+    });
     const got = this.orbs.update(dt || DT * 0.2, hero.pos);
     if (got) this.combat.gainEnergy(got * 4);
     this.ring.update(DT, hero.target);
@@ -377,6 +478,7 @@ export class Explore {
     const c = this.combat;
     this.meters.energy = c.energy / ENERGY_MAX;
     this.meters.skill = c.skillCooldown / SKILL_COOLDOWN;
+    this.meters.shot = c.shootCooldown / SHOOT_COOLDOWN;
     this.meters.combo = c.combo > 1 ? Math.max(0, c.comboT / COMBO_WINDOW) : 0;
     this.meters.map[0] = hero.pos.x;
     this.meters.map[1] = hero.pos.y;
@@ -490,6 +592,7 @@ export class Explore {
       f.active = true;
       f.camp = camp;
       const a = f.actor;
+      this.levelFoe(a, 2 + camp * 2);
       a.place(V.set(p.x, p.y, 0), yawOf(V2.subVectors(this.hero.pos, V)));
       a.play(SPAWN, this.hero);
       this.fx.fire("dashKage", this.time, V.set(a.pos.x, a.pos.y, a.groundZ), a.yaw, 0.1);
@@ -502,6 +605,7 @@ export class Explore {
     this.hud.objectives.boss = true;
     this.setPhase("bossIntro");
     const boss = this.boss;
+    this.levelFoe(boss, 8, 0.12);
     boss.place(V.set(b.at[0], b.at[1], 0), b.yaw ?? 0);
     boss.play(BOSS_ENTRY, this.hero);
     this.after(0.55 * boss.scale, () => {
@@ -552,6 +656,9 @@ export class Explore {
     }
     this.combat.stats.kos++;
     f.defeat(by);
+    const m = f as unknown as Monster | Actor;
+    const base = m instanceof Monster ? m.xp : XP[f.kind];
+    this.gainXp(Math.round(base * (1 + 0.3 * (f.level - 1))), f);
     if (f === this.boss) {
       this.combat.slow = 1.1;
       this.orbs.spawn(f.pos, 10);
@@ -587,6 +694,7 @@ export class Explore {
   private targets() {
     const out: Actor[] = [];
     for (const f of this.foes) if (f.active && f.actor.alive) out.push(f.actor);
+    for (const m of this.monsters) if (m.alive) out.push(m as unknown as Actor);
     if (!this.boss.dead && this.boss.alive && (this.phase === "boss" || this.phase === "bossIntro")) out.push(this.boss);
     return out;
   }
@@ -605,7 +713,12 @@ export class Explore {
   }
 
   private separate() {
-    const all = [this.hero, ...(this.boss.dead ? [] : [this.boss]), ...this.foes.filter((f) => f.active && !f.actor.dead).map((f) => f.actor)];
+    const all = [
+      this.hero,
+      ...(this.boss.dead ? [] : [this.boss]),
+      ...this.foes.filter((f) => f.active && !f.actor.dead).map((f) => f.actor),
+      ...this.monsters.filter((m) => m.alive && m.pos.distanceTo(this.hero.pos) < 25).map((m) => m as unknown as Actor),
+    ];
     for (let i = 0; i < all.length; i++) {
       for (let j = i + 1; j < all.length; j++) {
         const p = all[i];
@@ -634,6 +747,12 @@ export class Explore {
     put(this.hero);
     if (!this.boss.dead) put(this.boss);
     for (const f of this.foes) if (f.active) put(f.actor);
+    // the monsters nearest SORA get the remaining shadows
+    for (const m of this.monsters) {
+      if (n >= out.length) break;
+      if (m.dead || m.pos.distanceTo(this.hero.pos) > 30) continue;
+      out[n++].set(m.pos.x, m.pos.y, m.pos.z + m.body.model.entry.height * 0.45, 0.42 * m.scale);
+    }
     while (n < out.length) out[n++].set(0, 0, 0, 0);
   }
 
@@ -646,18 +765,25 @@ export class Explore {
   private updateBars() {
     const bars = this.meters.bars;
     let slot = 0;
-    for (const f of this.foes) {
-      if (slot >= BAR_SLOTS) break;
-      const a = f.actor;
-      if (!f.active || a.dead) continue;
-      const s = this.project(V.set(a.pos.x, a.pos.y, a.pos.z + 1.55 * a.scale));
+    const put = (pos: THREE.Vector3, top: number, hp: number, max: number, level: number, show: boolean) => {
+      if (slot >= BAR_SLOTS) return;
+      const s = this.project(V.set(pos.x, pos.y, pos.z + top));
       const k = slot * 4;
       bars[k] = s ? s.x : -1;
       bars[k + 1] = s ? s.y : -1;
-      bars[k + 2] = Math.max(0, a.hp / a.maxHp);
-      bars[k + 3] = s && a.vanish < 0 && a.hp < a.maxHp ? 1 : 0;
+      bars[k + 2] = Math.max(0, hp / max);
+      bars[k + 3] = s && show ? 1 : 0;
+      this.meters.levels[slot] = level;
       slot++;
+    };
+    for (const f of this.foes) {
+      const a = f.actor;
+      if (!f.active || a.dead) continue;
+      put(a.pos, 1.55 * a.scale, a.hp, a.maxHp, a.level, a.vanish < 0 && a.hp < a.maxHp);
     }
+    // the wild monsters nearest SORA first; a bar shows once one has noticed her
+    const near = this.monsters.filter((m) => m.alive).sort((p, q) => p.pos.distanceToSquared(this.hero.pos) - q.pos.distanceToSquared(this.hero.pos));
+    for (const m of near) put(m.pos, m.body.model.entry.height + 0.35, m.hp, m.maxHp, m.level, m.aggro && m.pos.distanceTo(this.hero.pos) < 30);
     for (; slot < BAR_SLOTS; slot++) bars[slot * 4 + 3] = 0;
   }
 
@@ -731,6 +857,9 @@ export class Explore {
     const showBoss = this.phase === "bossIntro" || this.phase === "boss";
     h.boss = showBoss ? { hp: Math.ceil(this.boss.hp), max: this.boss.maxHp, name: "HẮC TƯỚNG", title: "SHADOW GENERAL" } : null;
     h.combo = this.combat.combo;
+    h.level = this.level;
+    h.xp = this.xp;
+    h.xpNext = xpNeed(this.level);
     h.ultReady = this.combat.energy >= ENERGY_MAX;
     h.objectives.shrines = [this.shrines.filter((s) => s.lit).length, this.shrines.length];
     h.objectives.camps = [this.camps.filter((c) => c.state === "cleared").length, this.camps.length];
@@ -744,6 +873,168 @@ export class Explore {
     if (key === this.hudKey) return;
     this.hudKey = key;
     this.events.hud?.({ ...h, boss: h.boss && { ...h.boss }, objectives: { ...h.objectives, lit: [...h.objectives.lit], cleared: [...h.objectives.cleared] }, results: h.results && { ...h.results } });
+  }
+
+  // ---------------------------------------------------------------- the ranged cast
+  /** The flick reached its release: throw a crescent toward the locked-on foe, or the nearest one ahead. */
+  private throwBolt(me: Actor) {
+    let target = me.target && me.target.alive ? me.target : null;
+    if (!target) {
+      let best = 30;
+      for (const a of this.targets()) {
+        const to = V.subVectors(a.pos, me.pos).setZ(0);
+        const d = to.length();
+        if (d < best && me.forward.dot(to.normalize()) > 0.55) {
+          best = d;
+          target = a;
+        }
+      }
+    }
+    const dir = target ? V2.subVectors(target.pos, me.pos).setZ(0).normalize() : me.forward.clone();
+    this.bolts.fire(me.pos, dir, target);
+    this.events.sound?.("wave");
+  }
+
+  /** Show every monster for a moment (so their shaders compile with the world's), then hide them again. */
+  showMonsters(on: boolean) {
+    this.monsters.forEach((m, i) => {
+      m.body.root.visible = on;
+      if (on) m.body.root.position.set(this.hero.pos.x + (i % 4), this.hero.pos.y + Math.floor(i / 4), this.hero.pos.z);
+    });
+  }
+
+  // ---------------------------------------------------------------- wild packs
+  /** What the monsters need from the valley and the fight. */
+  private readonly monsterCtx = {
+    combat: null as unknown as Combat,
+    tokens: this.tokens,
+    orbs: this.waterOrbs,
+    shake: (n: number) => this.camera.shake(n),
+    ground: (x: number, y: number) => this.world.ground.at(x, y),
+    collide: (m: Monster) => this.world.collide(m.pos, m.radius, V.copy(m.pos)),
+  };
+
+  private updatePacks(dt: number) {
+    this.monsterCtx.combat = this.combat;
+    if (this.phase !== "roam" && this.phase !== "camp" && this.phase !== "boss") return;
+    const hero = this.hero;
+    this.packs.forEach((p, i) => {
+      const d = Math.hypot(hero.pos.x - p.x, hero.pos.y - p.y);
+      if (p.state === "gone") {
+        p.t -= dt;
+        if (p.t <= 0 && d > PACK_WAKE + 8) p.state = "asleep";
+        return;
+      }
+      if (p.state === "asleep") {
+        // they appear a little beyond where they would notice her, so she sees them first
+        if (d < PACK_WAKE && d > PACK_AGGRO + 3 && this.phase === "roam") this.spawnPack(i);
+        return;
+      }
+      const members = this.monsters.filter((m) => m.pack === i);
+      if (members.every((m) => !m.alive)) {
+        // every one of them down: the pack is gone for a while (the bodies sink away on their own)
+        if (members.every((m) => m.dead || m.down)) {
+          p.state = "gone";
+          p.t = PACK_RESPAWN;
+          for (const m of members) m.pack = -1;
+        }
+        return;
+      }
+      const alive = members.filter((m) => m.alive);
+      // one of them sees SORA or is struck: the whole pack turns on her
+      if (alive.some((m) => m.aggro || m.hp < m.maxHp || m.pos.distanceTo(hero.pos) < PACK_AGGRO)) {
+        if (!alive.every((m) => m.aggro)) this.events.sound?.("block");
+        for (const m of alive) m.aggro = true;
+      }
+      // led too far from home: they give up and drift back, healing
+      if (alive.some((m) => m.aggro) && d > PACK_LEASH + 8) for (const m of alive) m.aggro = false;
+      if (d > PACK_SLEEP && alive.every((m) => !m.aggro)) {
+        for (const m of members) {
+          m.remove();
+          m.pack = -1;
+        }
+        p.state = "asleep";
+      }
+    });
+  }
+
+  private spawnPack(i: number) {
+    const p = this.packs[i];
+    const taken = new Set<Monster>();
+    const picked = p.kinds.map((kind) => {
+      const m = this.monsters.find((x) => x.kind === kind && x.dead && x.pack < 0 && !taken.has(x));
+      if (m) taken.add(m);
+      return m;
+    });
+    if (picked.some((m) => !m)) return;
+    p.state = "out";
+    picked.forEach((m, k) => {
+      m = m!;
+      const a = (k / picked.length) * Math.PI * 2 + i;
+      let x = p.x + Math.cos(a) * 3.5;
+      let y = p.y + Math.sin(a) * 3.5;
+      // keep out of the water and out of walls
+      for (let tries = 0; tries < 6 && (this.world.ground.at(x, y) < 0.25 || this.world.solidAt(V.set(x, y, this.world.ground.at(x, y)))); tries++) {
+        x = p.x + Math.cos(a + tries) * (1.5 + tries);
+        y = p.y + Math.sin(a + tries) * (1.5 + tries);
+      }
+      m.pack = i;
+      m.place(x, y, this.world.ground.at(x, y), p.level + (m.kind === "golem" ? 1 : 0), this.wanderRng() * 360);
+      this.fx.fire("dashKage", this.time, V.set(x, y, m.groundZ), m.yaw, 0.1);
+    });
+  }
+
+  /** A foe's strength for its level (health grows faster than its blows). */
+  private levelFoe(a: Actor, level: number, growth = 0.35) {
+    a.level = level;
+    a.maxHp = Math.round(a.spec.hp * (1 + growth * (level - 1)));
+    a.power = 1 + 0.14 * (level - 1);
+  }
+
+  // ---------------------------------------------------------------- experience
+  /** Where SORA's journey stands (from the save). */
+  setProgress(level: number, xp: number) {
+    this.level = THREE.MathUtils.clamp(Math.floor(level) || 1, 1, LEVEL_MAX);
+    this.xp = Math.max(0, xp || 0);
+    this.applyLevel();
+  }
+
+  private applyLevel() {
+    const hero = this.hero;
+    const L = this.level;
+    hero.level = L;
+    hero.maxHp = 120 + 14 * (L - 1);
+    hero.power = 1 + 0.1 * (L - 1);
+    hero.hp = Math.min(hero.hp, hero.maxHp);
+  }
+
+  private gainXp(n: number, from: Actor) {
+    if (this.level >= LEVEL_MAX) return;
+    this.xp += n;
+    const s = this.project(V.set(from.pos.x, from.pos.y, from.pos.z + 2.1 * from.scale));
+    if (s) this.events.pop?.({ id: 1e6 + Math.floor(this.clock * 1000), x: s.x, y: s.y, value: n, kind: "xp" });
+    let levelled = false;
+    while (this.level < LEVEL_MAX && this.xp >= xpNeed(this.level)) {
+      this.xp -= xpNeed(this.level);
+      this.level++;
+      levelled = true;
+    }
+    if (levelled) this.levelUp();
+    this.events.progress?.(this.level, this.xp, levelled);
+  }
+
+  private levelUp() {
+    const hero = this.hero;
+    this.applyLevel();
+    hero.hp = hero.maxHp;
+    this.bolts.flare(hero.pos, this.world.ground.at(hero.pos.x, hero.pos.y));
+    this.fx.fire("dashSora", this.time, V.set(hero.pos.x, hero.pos.y, hero.groundZ), hero.yaw, 0.05);
+    this.combat.gainEnergy(25);
+    this.events.sound?.("clash");
+    this.say("LEVEL UP", `Lv ${this.level} · +HP +ATK`);
+    this.after(2.2, () => {
+      if (this.hud.banner === "LEVEL UP") this.say("");
+    });
   }
 
   private after(delay: number, fn: () => void) {

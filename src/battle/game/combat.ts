@@ -14,6 +14,7 @@ import type { Orders } from "./ai";
 import type { FxDirector } from "./fx";
 import {
   BLOCKED,
+  CAST,
   BRUTE_SLAM,
   FLINCH,
   type HitSpec,
@@ -36,7 +37,7 @@ export interface Pop {
   x: number;
   y: number;
   value: number;
-  kind: "hit" | "crit" | "block" | "hurt" | "parry";
+  kind: "hit" | "crit" | "block" | "hurt" | "parry" | "xp";
 }
 
 export interface CombatHost {
@@ -51,11 +52,14 @@ export interface CombatHost {
   pop(p: Pop): void;
   /** the ultimate's shatter landed at `at` */
   ultimate?(at: Actor): void;
+  /** a ranged cast reached its release: throw the bolt */
+  shoot?(me: Actor): void;
 }
 
 export const ENERGY_MAX = 100;
 export const SKILL_COOLDOWN = 5;
 export const COMBO_WINDOW = 2.2;
+export const SHOOT_COOLDOWN = 0.65;
 const PARRY_WINDOW = 0.22;
 
 const V = new THREE.Vector3();
@@ -70,11 +74,12 @@ export class Combat {
   combo = 0;
   comboT = 0;
   skillCooldown = 0;
+  shootCooldown = 0;
   dashCooldown = 0;
   stats = { maxCombo: 0, kos: 0, damage: 0 };
   private popId = 0;
   /** button presses waiting to be used (fight-clock deadline) */
-  readonly buffer = { attack: -1, jump: -1, dash: -1, skill: -1, ult: -1, finish: -1 };
+  readonly buffer = { attack: -1, jump: -1, dash: -1, skill: -1, ult: -1, finish: -1, shoot: -1 };
 
   constructor(
     private readonly fx: FxDirector,
@@ -85,7 +90,7 @@ export class Combat {
     this.time = 0;
     this.freeze = this.slow = 0;
     this.combo = 0;
-    this.skillCooldown = this.dashCooldown = 0;
+    this.skillCooldown = this.dashCooldown = this.shootCooldown = 0;
     for (const k of Object.keys(this.buffer) as (keyof typeof this.buffer)[]) this.buffer[k] = -1;
     if (!keepProgress) {
       this.energy = 0;
@@ -94,7 +99,7 @@ export class Combat {
   }
 
   press(button: keyof Combat["buffer"]) {
-    const window = { attack: 0.3, jump: 0.15, dash: 0.2, skill: 0.25, ult: 0.25, finish: 0.5 }[button];
+    const window = { attack: 0.3, jump: 0.15, dash: 0.2, skill: 0.25, ult: 0.25, finish: 0.5, shoot: 0.25 }[button];
     this.buffer[button] = this.time + window;
   }
 
@@ -110,6 +115,7 @@ export class Combat {
       if (this.comboT <= 0) this.combo = 0;
     }
     this.skillCooldown = Math.max(0, this.skillCooldown - dt);
+    this.shootCooldown = Math.max(0, this.shootCooldown - dt);
     this.dashCooldown -= dt;
     return dt;
   }
@@ -151,6 +157,15 @@ export class Combat {
       const dir = hero.wish.lengthSq() > 0.04 ? V.set(hero.wish.x, hero.wish.y, 0) : null;
       this.startMove(hero, dir ? null : foe, SORA_MOVES.streak, dir?.clone());
       return "skill";
+    }
+    if (b.shoot >= t && this.shootCooldown <= 0 && (free || recovering) && !hero.airborne) {
+      b.shoot = -1;
+      this.shootCooldown = SHOOT_COOLDOWN;
+      // square up to the target (or keep facing where she runs), then flick the blade
+      if (foe) hero.yaw = yawOf(V.subVectors(foe.pos, hero.pos).setZ(0));
+      else if (hero.wish.lengthSq() > 0.04) hero.yaw = yawOf(V.set(hero.wish.x, hero.wish.y, 0));
+      this.startMove(hero, null, CAST);
+      return "shoot";
     }
     if (b.jump >= t && free && !hero.airborne) {
       b.jump = -1;
@@ -229,6 +244,10 @@ export class Combat {
   /** Land `me`'s blows that are due. */
   resolve(me: Actor) {
     const a = me.action;
+    if (a?.def === CAST && a.t >= CAST.impact! && !a.done.has(-1)) {
+      a.done.add(-1);
+      this.host.shoot?.(me);
+    }
     if (!a?.def.hits || a.def.impact === undefined || me.dead) return;
     a.def.hits.forEach((hit, i) => {
       if (a.done.has(i) || a.t < a.def.impact! + (hit.delay ?? 0)) return;
@@ -245,22 +264,29 @@ export class Combat {
     });
   }
 
+  /** A blow that arrives from afar (a thrown bolt): lands on `foe` wherever it stands. */
+  blast(me: Actor, foe: Actor, hit: HitSpec) {
+    return this.strike(me, foe, hit, true, true);
+  }
+
   /** One blow on one fighter. Returns whether it connected. */
-  private strike(me: Actor, foe: Actor, hit: HitSpec, fxOn: boolean) {
+  private strike(me: Actor, foe: Actor, hit: HitSpec, fxOn: boolean, aimed = false) {
     if (foe.down || foe.invulnerable || foe.dead) return false;
     const to = V.subVectors(foe.pos, me.pos).setZ(0);
-    const dist = to.length() - foe.radius * 0.5;
-    const reach = hit.range * Math.max(me.scale, 0.85);
-    if (dist > reach || (hit.min !== undefined && dist < hit.min)) return false;
-    // height: a grounded sweep misses someone high in a jump
-    if (Math.abs(foe.pos.z - foe.groundZ - (me.pos.z - me.groundZ)) > 1.8 + (hit.kind === "launch" ? 1 : 0)) return false;
-    const ang = (Math.acos(THREE.MathUtils.clamp(me.forward.dot(to.normalize()), -1, 1)) * 180) / Math.PI;
-    if (ang > hit.arc) return false;
+    if (!aimed) {
+      const dist = to.length() - foe.radius * 0.5;
+      const reach = hit.range * Math.max(me.scale, 0.85);
+      if (dist > reach || (hit.min !== undefined && dist < hit.min)) return false;
+      // height: a grounded sweep misses someone high in a jump
+      if (Math.abs(foe.pos.z - foe.groundZ - (me.pos.z - me.groundZ)) > 1.8 + (hit.kind === "launch" ? 1 : 0)) return false;
+      const ang = (Math.acos(THREE.MathUtils.clamp(me.forward.dot(to.normalize()), -1, 1)) * 180) / Math.PI;
+      if (ang > hit.arc) return false;
+    }
     const faceYaw = yawOf(V2.subVectors(me.pos, foe.pos));
     const facing = Math.abs(((foe.yaw - faceYaw + 540) % 360) - 180) < 100;
     const heroHit = foe.kind === "hero";
     // bigger fighters hit harder
-    const damage = hit.damage * (me.kind === "captain" ? 1.25 : 1);
+    const damage = hit.damage * me.power * (me.kind === "captain" ? 1.25 : 1);
     const at = V2.set(foe.pos.x, foe.pos.y, foe.groundZ);
 
     if (foe.guardHeld && facing && !foe.airborne) {

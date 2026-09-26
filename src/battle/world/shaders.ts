@@ -184,7 +184,7 @@ const PLANTS: Record<
   lotus: { lit: [0.1, 0.32, 0.08], lit2: [0.14, 0.36, 0.08], shade: [0.03, 0.09, 0.03], wind: 0.05 },
   rock: { lit: [0.34, 0.33, 0.31], lit2: [0.28, 0.3, 0.22], shade: [0.08, 0.08, 0.09], wind: 0 },
   // the meadow round the player: deep roots, sunlit yellow-green tips
-  meadow: { lit: [0.13, 0.38, 0.04], lit2: [0.24, 0.5, 0.05], shade: [0.025, 0.09, 0.03], wind: 0.5, tip: [0.7, 0.78, 0.2] },
+  meadow: { lit: [0.13, 0.37, 0.045], lit2: [0.22, 0.47, 0.055], shade: [0.03, 0.1, 0.035], wind: 0.35, tip: [0.52, 0.66, 0.17] },
   flower: { lit: [0.12, 0.34, 0.05], lit2: [0.18, 0.4, 0.05], shade: [0.03, 0.09, 0.03], wind: 0.45 },
 };
 /** wild flowers: white daisies, violets, buttercups, a few pinks */
@@ -317,6 +317,14 @@ export function heroMaterial(tex: THREE.Texture) {
     const lum = e.x * 0.2126 + e.y * 0.7152 + e.z * 0.0722;
     // two soft bands instead of three hard ones
     const k = std.smoothstep(0.05, 0.2, lum) * 0.55 + std.smoothstep(0.2, 0.32, lum) * 0.45;
+    // right in front of the lens a piece dissolves (an ordered dither) instead of filling the screen:
+    // leafy clumps and eaves the orbit camera brushes past
+    const near = std.length(std.sub(t3.cameraPosition.$, pw));
+    const sc = t3.screenCoordinate.$;
+    const dither = std.fract(52.9829189 * std.fract(0.06711056 * sc.x + 0.00583715 * sc.y));
+    if (std.smoothstep(1.4, 3.6, near) < dither) {
+      std.discard();
+    }
     const base = albedo.$.xyz;
     const lit = std.mul(base, 1.08);
     const shade = std.mul(std.mul(base, U.skyHorizon.$), 0.5);

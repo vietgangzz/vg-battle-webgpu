@@ -152,6 +152,20 @@ export const SORA_MOVES = {
 } satisfies Record<string, MoveDef>;
 
 /** SORA chains spin -> rising -> thrust. */
+/** A quick flick of the blade that throws a crescent of sword light (the bolt flies from the impact). */
+export const CAST: MoveDef = {
+  name: "cast",
+  keys: [
+    { t: 0.07, pose: P.pose(P.READY, { squash: 0.86 }), ease: "in" },
+    { t: 0.19, pose: P.H_SLASH, ease: "snap", at: fwd(0.08) },
+    { t: 0.4, pose: P.READY, ease: "smooth" },
+  ],
+  impact: 0.18,
+  chain: 0.3,
+};
+/** What the sword-light crescent does to whoever it passes through. */
+export const BOLT_HIT: HitSpec = { range: 99, arc: 180, damage: 13, kind: "light", clip: "thrustHit", gain: 3 };
+
 export const SORA_COMBO: MoveDef[] = [SORA_MOVES.spin, SORA_MOVES.rising, SORA_MOVES.thrust];
 
 // ---------------------------------------------------------------- KAGE and his shadows

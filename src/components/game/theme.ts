@@ -6,3 +6,5 @@ export const CRIMSON = "#FF2A2F";
 export const UI_FONT = "ManropeSemiBold";
 /** the brand's second colour (the Little Giant's rays) */
 export const ORANGE = "#FF7447";
+/** experience and levels */
+export const GOLD = "#FFD166";

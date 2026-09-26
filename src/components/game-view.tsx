@@ -13,6 +13,7 @@ import { FilmPlayer } from "@/battle/runtime/player";
 import type { WorldManifest } from "@/battle/world/data";
 import { Explore, type ExploreHud as ExploreHudState } from "@/battle/world/explore";
 import { loadWorld } from "@/battle/world/load-world";
+import { loadCreatures } from "@/battle/world/load-creatures";
 import { Controls } from "@/components/game/controls";
 import { ExploreHud } from "@/components/game/explore-hud";
 import { Hud } from "@/components/game/hud";
@@ -60,6 +61,13 @@ const HAPTIC: Partial<Record<SoundName, () => void>> = {
  * The game on one full-screen canvas: the title screen over the film's
  * standoff, then the stages.
  */
+/**
+ * The game draws at most 2 device pixels per point: on a 3x phone the third
+ * pixel costs more than half the frame for detail no one sees in motion
+ * (the film route keeps full resolution).
+ */
+const gamePixelRatio = () => Math.min(PixelRatio.get(), 2);
+
 export function GameView() {
   useKeepAwake();
   const [fontsLoaded] = useFonts({ ManropeSemiBold: require("../../assets/fonts/Manrope-SemiBold.ttf") });
@@ -85,17 +93,21 @@ export function GameView() {
   const map = useSharedValue<number[]>([0, 0, 0, 0]);
   const energy = useSharedValue(0);
   const skill = useSharedValue(0);
+  const shot = useSharedValue(0);
+  const levels = useSharedValue<number[]>(new Array(BAR_SLOTS).fill(0));
   const combo = useSharedValue(0);
   const progress = useSharedValue(0);
   const bars = useSharedValue<number[]>(new Array(BAR_SLOTS * 4).fill(0));
   const curtain = useSharedValue(0);
   const soundtrack = useAudioPlayer(SOUNDTRACK);
   const sfx = useSfx();
-  const { save, record, setSettings } = useSave();
+  const { save, record, setSettings, setHero } = useSave();
+  const heroSave = useRef(save.hero);
   const settings = useRef(save.settings);
   useEffect(() => {
     settings.current = save.settings;
-  }, [save.settings]);
+    heroSave.current = save.hero;
+  }, [save.settings, save.hero]);
 
   const setMode = (m: Mode) => {
     mode.current = m;
@@ -169,7 +181,7 @@ export function GameView() {
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     size.current = { width, height };
-    player.current?.setSize(width, height, PixelRatio.get());
+    player.current?.setSize(width, height, gamePixelRatio());
   }, []);
 
   useEffect(() => {
@@ -183,13 +195,13 @@ export function GameView() {
         const context = ref.current?.getContext("webgpu");
         if (!context) return;
         const { width, height } = size.current.width ? size.current : { width: 1, height: 1 };
-        const p = await FilmPlayer.create(context, { width, height, pixelRatio: PixelRatio.get() }, { onProgress: setStage });
+        const p = await FilmPlayer.create(context, { width, height, pixelRatio: gamePixelRatio() }, { onProgress: setStage });
         if (cancelled) {
           p.dispose();
           return;
         }
         player.current = p;
-        if (size.current.width) p.setSize(size.current.width, size.current.height, PixelRatio.get());
+        if (size.current.width) p.setSize(size.current.width, size.current.height, gamePixelRatio());
         const g = new Adventure(p, {
           hud: setHud,
           sound: (n) => {
@@ -216,6 +228,11 @@ export function GameView() {
         setPad(g);
         setStage("world");
         const wd = await loadWorld();
+        // the valley's monsters (the game still runs without them if they fail to load)
+        const creatures = await loadCreatures().catch((e) => {
+          console.warn("[game] creatures", e);
+          return null;
+        });
         const ex = new Explore(p, wd, {
           hud: setWorld,
           sound: (n) => {
@@ -226,11 +243,18 @@ export function GameView() {
           meters: (m) => {
             energy.value = m.energy;
             skill.value = m.skill;
+            shot.value = m.shot;
             combo.value = m.combo;
             bars.value = [...m.bars];
+            levels.value = [...m.levels];
             map.value = [...m.map];
           },
-        });
+          progress: (level, xp, levelled) => {
+            setHero(level, xp);
+            if (levelled && settings.current.haptics) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          },
+        }, creatures);
+        ex.setProgress(heroSave.current.level, heroSave.current.xp);
         ex.world.group.visible = true;
         await p.renderer.compileAsync(ex.world.group, p.fs.camera, p.fs.scene);
         ex.world.group.visible = false;
@@ -332,10 +356,22 @@ export function GameView() {
       )}
       {view === "explore" && ready && roam && world && (
         <>
-          <ExploreHud state={world} manifest={roam.manifest} energy={energy} combo={combo} bars={bars} map={map} pops={pops} onPopDone={popDone} onPause={() => setPaused(true)} />
+          <ExploreHud
+            state={world}
+            manifest={roam.manifest}
+            energy={energy}
+            combo={combo}
+            bars={bars}
+            levels={levels}
+            map={map}
+            pops={pops}
+            onPopDone={popDone}
+            onPause={() => setPaused(true)}
+          />
           {["roam", "camp", "boss", "bossIntro"].includes(world.phase) && !pausedView && (
             <Controls
               pad={roam.game}
+              shot={shot}
               energy={energy}
               skill={skill}
               ultReady={world.ultReady}
