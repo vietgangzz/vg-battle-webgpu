@@ -87,18 +87,116 @@ export function restyleSora(fs: FilmScene) {
   const band = fs.object("sora_band");
   const bm = band.material as THREE.Material[];
   if (Array.isArray(bm) && bm[1]) bm[1] = ink;
-  thickenBand(band.geometry, 1.8);
+  // the band in the head's space: the film's first frame places both
+  const toBand = fs.filmed("sora_band", 0).invert().multiply(fs.filmed("sora_body", 0));
+  thickenBand(band.geometry, fs.object("sora_body").geometry, toBand, 1.7);
 }
 
-/** The headband as the film's close-ups show it: a bold strip, not a thread (its height scaled about its middle, once). */
-function thickenBand(geo: THREE.BufferGeometry, k: number) {
+const BINS = 48;
+
+/**
+ * The headband as the film's close-ups show it: a bold strip, not a thread.
+ * Its height is scaled about its middle (the ring is level in its own space),
+ * and each vertex moved up or down also moves in or out with the head: the
+ * head swells below the band and narrows above it, so a taller band simply
+ * stretched would sink into it where it widens (the strip broke up along her
+ * side). How the head's radius changes with height is fitted round the ring,
+ * smoothly, from the head's own vertices.
+ */
+function thickenBand(geo: THREE.BufferGeometry, head: THREE.BufferGeometry, toBand: THREE.Matrix4, k: number) {
   if (geo.userData.thickened) return;
   geo.userData.thickened = true;
   const pos = geo.getAttribute("position") as THREE.BufferAttribute;
-  let mid = 0;
-  for (let i = 0; i < pos.count; i++) mid += pos.getZ(i);
-  mid /= pos.count;
-  for (let i = 0; i < pos.count; i++) pos.setZ(i, mid + (pos.getZ(i) - mid) * k);
+  let cx = 0;
+  let cy = 0;
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  let ring = 0;
+  for (let i = 0; i < pos.count; i++) {
+    cx += pos.getX(i);
+    cy += pos.getY(i);
+    z0 = Math.min(z0, pos.getZ(i));
+    z1 = Math.max(z1, pos.getZ(i));
+  }
+  cx /= pos.count;
+  cy /= pos.count;
+  for (let i = 0; i < pos.count; i++) ring += Math.hypot(pos.getX(i) - cx, pos.getY(i) - cy) / pos.count;
+  const mid = (z0 + z1) / 2;
+  const reach = ((z1 - z0) / 2) * k + 0.04;
+  // per angle round the ring: a straight-line fit of the head's radius against height, near the band
+  const sums = Array.from({ length: BINS }, () => [0, 0, 0, 0, 0]);
+  const hp = head.getAttribute("position") as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+  const angle = (x: number, y: number) => ((Math.atan2(y, x) + Math.PI) / (2 * Math.PI)) * BINS;
+  for (let i = 0; i < hp.count; i++) {
+    v.fromBufferAttribute(hp, i).applyMatrix4(toBand);
+    const dz = v.z - mid;
+    if (Math.abs(dz) > reach) continue;
+    const x = v.x - cx;
+    const y = v.y - cy;
+    const r = Math.hypot(x, y);
+    // the head's skin only (not the mouth's inside)
+    if (r < ring * 0.6) continue;
+    const b = sums[Math.floor(angle(x, y)) % BINS];
+    b[0]++;
+    b[1] += dz;
+    b[2] += r;
+    b[3] += dz * dz;
+    b[4] += dz * r;
+  }
+  // the fit's slope and its radius at the band's middle height, per angle
+  const fits = sums.map(([n, sz, sr, szz, szr]) => {
+    const d = n * szz - sz * sz;
+    if (n < 4 || d < 1e-9) return null;
+    const slope = (n * szr - sz * sr) / d;
+    return { slope, at: (sr - slope * sz) / n };
+  });
+  const fill = (vals: number[]) =>
+    vals.map((s, i) => {
+      if (!Number.isNaN(s)) return s;
+      for (let d = 1; d < BINS / 2; d++) {
+        const a = vals[(i + d) % BINS];
+        const b = vals[(i - d + BINS) % BINS];
+        if (!Number.isNaN(a) || !Number.isNaN(b)) return Number.isNaN(a) ? b : Number.isNaN(b) ? a : (a + b) / 2;
+      }
+      return 0;
+    });
+  const smooth = (vals: number[], passes: number) => {
+    for (let p = 0; p < passes; p++) vals = vals.map((s, i) => (vals[(i + BINS - 1) % BINS] + 2 * s + vals[(i + 1) % BINS]) / 4);
+    return vals;
+  };
+  const slope = smooth(fill(fits.map((f) => f?.slope ?? NaN)), 3);
+  const surface = smooth(fill(fits.map((f) => f?.at ?? NaN)), 2);
+  const lerp = (vals: number[], x: number, y: number) => {
+    const t = angle(x, y) - 0.5;
+    const i = Math.floor(t);
+    const f = t - i;
+    return vals[(i + BINS) % BINS] * (1 - f) + vals[(i + 1 + BINS) % BINS] * f;
+  };
+  // where the head's skin comes through the band (it does, along her left side), the band stands out
+  // of it: per angle, its innermost vertex is kept a few millimetres clear, the whole strip moved with it
+  const inner = new Array<number>(BINS).fill(Infinity);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) - cx;
+    const y = pos.getY(i) - cy;
+    const z = mid + (pos.getZ(i) - mid) * k;
+    const clear = Math.hypot(x, y) + lerp(slope, x, y) * (z - pos.getZ(i)) - (lerp(surface, x, y) + lerp(slope, x, y) * (z - mid));
+    const b = Math.floor(angle(x, y)) % BINS;
+    inner[b] = Math.min(inner[b], clear);
+  }
+  let push = inner.map((c) => (Number.isFinite(c) ? Math.max(0, 0.005 - c) : 0));
+  // widened, then eased, so the strip bends out smoothly rather than stepping
+  push = push.map((_, i) => Math.max(push[(i + BINS - 1) % BINS], push[i], push[(i + 1) % BINS]));
+  push = smooth(push, 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) - cx;
+    const y = pos.getY(i) - cy;
+    const z = pos.getZ(i);
+    const nz = mid + (z - mid) * k;
+    const r = Math.hypot(x, y);
+    const nr = r + lerp(slope, x, y) * (nz - z) + lerp(push, x, y);
+    pos.setXYZ(i, cx + (x / r) * nr, cy + (y / r) * nr, nz);
+  }
   pos.needsUpdate = true;
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
