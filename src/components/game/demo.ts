@@ -3,9 +3,11 @@
  * (cut down to a reel), driven by two programmed thumbs. The left one works
  * the stick (steering SORA down the towpath and over the bridge, turned to
  * the camera's heading as a player's thumb would be), the right one holds
- * sprint and taps the attacks, the Heaven Pierce and, against the tiger lord
- * (who meets her off the bridge), the lotus tempest; when he swings, it
- * dashes her out of the way. The touches go through the controls themselves
+ * sprint and plays every skill she has: the blade's combo, the sword streak,
+ * a jump and an air cut, kiếm khí, the dash, the Heaven Pierce and, against
+ * the tiger lord (who meets her off the bridge), the lotus tempest; when he
+ * swings, it either dashes her out of the way or parries him (the guard
+ * pressed just before the blow lands, which staggers even him). The touches go through the controls themselves
  * (see Synth) and are drawn as fingertips (see Fingers), so the picture is
  * what a hand playing it shows.
  */
@@ -83,6 +85,9 @@ export function runDemo(env: DemoEnv) {
   let dodgeDir: P = { x: 0, y: 0 };
   let dodgeUntil = 0;
   let dodgeReady = 0;
+  /** his swings are met in turn with a dash out of the way and a parry; `parry` holds the guard for the one on its way */
+  let parryNext = false;
+  let parrying = false;
   let knob: P = { x: 0, y: 0 };
   // what the right thumb does while SORA runs: sprint in bursts (her stamina lasts about five seconds), a drag of the camera between
   let runT = -1;
@@ -131,6 +136,7 @@ export function runDemo(env: DemoEnv) {
     });
     at(t, () => {
       const p = button(id);
+      env.synth.current?.up("R");
       env.synth.current?.down("R", p.x, p.y);
       env.fingers.current?.press(R);
     });
@@ -187,9 +193,12 @@ export function runDemo(env: DemoEnv) {
       chase = true;
       lPress();
     });
-    for (const k of [0.8, 1.15, 1.5, 1.85]) tap(t + k, "attack");
-    tap(t + 2.3, "dash");
-    for (const k of [2.8, 3.15]) tap(t + k, "attack");
+    for (const k of [0.8, 1.15, 1.5]) tap(t + k, "attack");
+    tap(t + 2.0, "skill");
+    // up, and a cut on the way down
+    tap(t + 2.6, "jump");
+    tap(t + 2.85, "attack");
+    tap(t + 3.3, "dash");
     tap(t + 3.7, "shoot");
     at(t + 4.1, () => env.game()?.charge(1));
     tap(t + 4.7, "ult");
@@ -234,19 +243,25 @@ export function runDemo(env: DemoEnv) {
     const near = (m: number) => () => {
       const lord = g()?.demoLord();
       const h = g()?.hero.pos;
-      return !!lord && !!h && Math.hypot(lord.pos.x - h.x, lord.pos.y - h.y) < m;
+      return !!lord && !!h && Math.hypot(lord.pos.x - h.x, lord.pos.y - h.y) < m && now() > dodgeUntil;
     };
     const far = (m: number) => () => !near(m)();
     tap(t + 0.3, "shoot");
     hold(t + 0.75, t + 2.0, "sprint");
-    for (const k of [2.1, 2.45, 2.8, 3.6, 3.95, 4.3]) tap(t + k, "attack", near(4));
+    for (const k of [2.1, 2.45, 2.8]) tap(t + k, "attack", near(4));
+    tap(t + 3.3, "skill", near(7));
+    for (const k of [3.95, 4.3]) tap(t + k, "attack", near(4));
     // (worn to half, he roars in a rage: sooner than the blows alone would take him there)
     at(t + 4.6, () => {
       const lord = g()?.demoLord();
       if (lord && lord.hp > lord.maxHp * 0.5) g()?.demoWear(lord.maxHp * 0.49);
     });
     tap(t + 5.2, "shoot", far(4));
-    for (const k of [5.9, 6.25, 6.6, 7.3, 7.65, 8.0]) tap(t + k, "attack", near(4));
+    tap(t + 5.8, "jump", near(4));
+    tap(t + 6.05, "attack", near(4.5));
+    for (const k of [6.6, 6.95]) tap(t + k, "attack", near(4));
+    tap(t + 8.35, "skill", near(7));
+    tap(t + 8.0, "attack", near(4));
     at(t + 8.4, () => g()?.charge(2));
     // the lotus tempest (pressed again while she is still reeling from a blow and it will not go)
     const ult = (k: number, tries: number) => {
@@ -315,17 +330,32 @@ export function runDemo(env: DemoEnv) {
         const dx = hero.x - lord.pos.x;
         const dy = hero.y - lord.pos.y;
         const d = Math.hypot(dx, dy) || 1;
-        // he swings: off to one side and a little back, out of the blow's arc, with a dash
+        // he swings: in turn, a dash off to one side and a little back, out of the blow's arc, or a parry
         if (lord.attacking && d < 5.5 && t >= dodgeReady) {
-          dodgeSide = -dodgeSide;
-          const ax = dx / d;
-          const ay = dy / d;
-          dodgeDir = { x: ax * 0.45 - ay * 0.9 * dodgeSide, y: ay * 0.45 + ax * 0.9 * dodgeSide };
-          dodgeUntil = t + 0.45;
           dodgeReady = t + 1.3;
-          tap(t + 0.12, "dash");
+          parryNext = !parryNext;
+          if (parryNext) {
+            // she stands her ground, facing him, and waits for the blow
+            parrying = true;
+            dodgeUntil = t + 1.0;
+          } else {
+            dodgeSide = -dodgeSide;
+            const ax = dx / d;
+            const ay = dy / d;
+            dodgeDir = { x: ax * 0.45 - ay * 0.9 * dodgeSide, y: ay * 0.45 + ax * 0.9 * dodgeSide };
+            dodgeUntil = t + 0.45;
+            tap(t + 0.12, "dash");
+          }
         }
-        if (t < dodgeUntil) {
+        // the guard goes up just before the blow lands (inside the parry's window), and comes down after
+        if (parrying && lord.blowIn <= 0.17) {
+          parrying = false;
+          hold(t + 0.02, t + 0.45, "guard");
+          dodgeUntil = t + 0.55;
+        } else if (parrying && !lord.attacking) parrying = false;
+        if (parrying || (parryNext && t < dodgeUntil)) {
+          // (standing still, facing him)
+        } else if (t < dodgeUntil) {
           goal = { x: hero.x + dodgeDir.x * 4, y: hero.y + dodgeDir.y * 4 };
           ease = 0.4;
         } else if (d > 2.9) goal = lord.pos;

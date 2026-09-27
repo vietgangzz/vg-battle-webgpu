@@ -1491,9 +1491,9 @@ export class Explore {
   }
 
   /** The tiger lord, for the demo's thumbs: where he is, and whether a blow of his is on its way (null unless he is fighting). */
-  demoLord(): { pos: THREE.Vector3; attacking: boolean; hp: number; maxHp: number } | null {
+  demoLord(): { pos: THREE.Vector3; attacking: boolean; blowIn: number; hp: number; maxHp: number } | null {
     const t = this.tiger;
-    return t && this.phase === "boss" && t.alive ? { pos: t.pos, attacking: t.attacking, hp: t.hp, maxHp: t.maxHp } : null;
+    return t && this.phase === "boss" && t.alive ? { pos: t.pos, attacking: t.attacking, blowIn: t.blowIn, hp: t.hp, maxHp: t.maxHp } : null;
   }
 
   /** Whether the ultimate is still charged (the demo's thumb presses it again until it goes). */

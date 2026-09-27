@@ -300,6 +300,11 @@ export class Monster {
   get attacking() {
     return this.state === "attack" && !this.landed;
   }
+  /** seconds until the blow on its way lands (Infinity when none is) */
+  get blowIn() {
+    if (this.state !== "attack" || this.landed || !this.blow) return Infinity;
+    return (this.body.impact(this.blow.clip) ?? 0.5) / (this.blow.speed * this.fury) - this.t;
+  }
   get xp() {
     return this.spec.xp;
   }

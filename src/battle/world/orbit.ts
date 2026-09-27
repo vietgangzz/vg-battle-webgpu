@@ -13,6 +13,8 @@ const DEG = Math.PI / 180;
 const HIGH_PITCH = 33 * DEG;
 /** in a fight the lens stands back and looks down on the field at least this steeply: the whole scrap in view, not her back */
 const FIGHT_PITCH = 25 * DEG;
+/** how far off to the side her foe may be before the fight lens comes round toward him */
+const FIGHT_SLACK = 18 * DEG;
 
 export class OrbitCamera {
   readonly position = new THREE.Vector3();
@@ -75,6 +77,18 @@ export class OrbitCamera {
       this.placed = true;
     }
     this.focus.lerp(want, 1 - Math.exp(-dt * 8));
+    // in a fight, left alone, the lens comes round behind her toward her foe, as a player keeps it: slowly,
+    // and only for the part he has drifted more than a little off to the side (a dodge or a step round
+    // him does not swing the picture); right on top of her, his bearing means nothing and is left
+    if (fighting && now - this.lastLook > 1.2) {
+      const dx = foe!.pos.x - hero.pos.x;
+      const dy = foe!.pos.y - hero.pos.y;
+      let d = Math.atan2(dy, dx) - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      const over = Math.sign(d) * Math.max(0, Math.abs(d) - FIGHT_SLACK);
+      const sure = THREE.MathUtils.clamp((Math.hypot(dx, dy) - 1.2) / 2, 0, 1);
+      this.yaw += over * (1 - Math.exp(-dt * 2)) * sure;
+    }
     this.dist = THREE.MathUtils.damp(this.dist, wantDist, 3, dt);
 
     // left alone, the camera swings round behind her as she runs
