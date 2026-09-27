@@ -596,7 +596,10 @@ export class Explore {
       else if (move === "ult2") {
         this.say("LOTUS TEMPEST", "SEN BÃO");
         // (the demo's tempest is the blow that fells the tiger lord)
-        if (this.demo) this.demoWear(18);
+        if (this.demo) {
+          this.demoFinishing = true;
+          this.demoWear(18);
+        }
       }
     }
     for (const f of this.foes) if (f.active) f.actor.target = hero;
@@ -844,6 +847,11 @@ export class Explore {
   }
 
   private knockOut(f: Actor, by: Actor) {
+    // (in the demo nothing but the lotus tempest fells the tiger lord: before it, he hangs on)
+    if (this.demo && f === this.lord && !this.demoFinishing) {
+      f.hp = Math.max(1, f.maxHp * 0.06);
+      return;
+    }
     this.events.sound?.("down");
     if (f === this.hero) {
       f.defeat(by);
@@ -1459,6 +1467,8 @@ export class Explore {
   private demo = false;
   /** the tiger lord's health in the demo (0: the valley's own) */
   private demoLordHp = 0;
+  /** the demo's lotus tempest is under way (the blow allowed to fell him) */
+  private demoFinishing = false;
 
   /** The showcase demo sets out from where the valley starts; no camp springs an ambush on the way. */
   demoSetup() {

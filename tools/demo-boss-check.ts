@@ -107,13 +107,15 @@ if (process.argv[2] === "--soldiers") {
 hero.place(new env.THREE.Vector3(sx, sy, 0), syaw);
 game.camera.reset(hero);
 for (let i = 0; i < 30; i++) step();
-game.demoLordNear(230);
+game.demoLordNear(1000);
 let tb = -1;
 let dodgeSide = 1;
 let dodgeDir = { x: 0, y: 0 };
 let dodgeUntil = 0;
 let dodgeReady = 0;
 let parryNext = false;
+let swings = 0;
+let lastState = "";
 let parrying = false;
 const due: { at: number; run: () => void }[] = [];
 const at = (s: number, run: () => void) => due.push({ at: s, run });
@@ -122,7 +124,7 @@ const near = (m: number) => {
   return !!l && Math.hypot(l.pos.x - hero.pos.x, l.pos.y - hero.pos.y) < m && t > dodgeUntil && !l.attacking;
 };
 let hp = hero.hp;
-const shots = [1, 3, 5, 7, 9.3, 10.2];
+const shots = [2, 5, 8, 11, 14.3, 15.2];
 let killed = -1;
 for (; t < 120; ) {
   const lord = game.demoLord();
@@ -132,20 +134,23 @@ for (; t < 120; ) {
     at(tb + 0.3, () => game.shoot());
     at(tb + 0.75, () => game.setSprint(true));
     at(tb + 2.0, () => game.setSprint(false));
-    for (const k of [2.1, 2.45, 2.8, 3.6, 3.95, 4.3, 5.9, 6.25, 6.6, 7.3, 7.65, 8.0]) at(tb + k - 0.14, () => near(4) && at(t + 0.14, () => game.attack()));
-    at(tb + 4.6, () => {
+    const tapIf = (k: number, ok: () => boolean, run: () => void) => at(tb + k - 0.14, () => ok() && at(t + 0.14, run));
+    for (const k of [2.1, 2.45, 2.8, 3.95, 4.3, 6.05, 6.6, 6.95, 9.0, 9.35, 9.7, 11.25, 11.8, 12.15, 12.5]) tapIf(k, () => near(4), () => game.attack());
+    for (const k of [3.3, 8.4, 13.45]) tapIf(k, () => near(7), () => game.skill());
+    for (const k of [5.8, 11.0]) tapIf(k, () => near(4), () => game.jump());
+    for (const k of [5.2, 10.4]) tapIf(k, () => !near(4), () => game.shoot());
+    at(tb + 7.4, () => {
       const l = game.demoLord();
       if (l && l.hp > l.maxHp * 0.5) game.demoWear(l.maxHp * 0.49);
     });
-    at(tb + 5.2 - 0.14, () => !near(4) && at(t + 0.14, () => game.shoot()));
-    at(tb + 8.4, () => game.charge(2));
+    at(tb + 13.4, () => game.charge(2));
     const ult = (k: number, tries: number) =>
       at(k, () => {
         game.ult();
         log.push(`${(t - tb).toFixed(2)} ult pressed`);
         at(t + 0.4, () => tries > 1 && game.demoCharged() && ult(t + 0.05, tries - 1));
       });
-    ult(tb + 9.0, 8);
+    ult(tb + 14.0, 8);
   }
   for (const d of due.filter((x) => x.at <= t)) {
     due.splice(due.indexOf(d), 1);
@@ -157,7 +162,10 @@ for (; t < 120; ) {
     const dx = hero.pos.x - lord.pos.x;
     const dy = hero.pos.y - lord.pos.y;
     const d = Math.hypot(dx, dy) || 1;
-    if (lord.attacking && d < 5.5 && t >= dodgeReady && (parryNext = !parryNext && !hero.busy)) {
+    if (lord.attacking && d < 5.5 && t >= dodgeReady && ++swings % 3 === 0) {
+      dodgeReady = t + 1.3;
+      log.push(`${(t - tb).toFixed(2)} takes it`);
+    } else if (lord.attacking && d < 5.5 && t >= dodgeReady && (parryNext = swings % 3 === 2 && !hero.busy)) {
       dodgeReady = t + 1.3;
       parrying = true;
       game.demoHoldOff();
@@ -188,6 +196,12 @@ for (; t < 120; ) {
   }
   steer(goal, ease);
   step();
+  {
+    // his moves as they begin (charge, combo blows)
+    const st = (game as unknown as { tiger: { state: string } | null }).tiger?.state ?? "-";
+    if (tb >= 0 && st !== lastState && ["charge", "attack", "roar"].includes(st)) log.push(`${(t - tb).toFixed(2)} lord ${st}`);
+    lastState = st;
+  }
   if (hero.hp < hp - 0.5) {
     const l = game.demoLord();
     const face = l ? Math.abs(((hero.yaw - (Math.atan2(l.pos.y - hero.pos.y, l.pos.x - hero.pos.x) * 180) / Math.PI + 540) % 360) - 180) : -1;

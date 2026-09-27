@@ -89,6 +89,7 @@ export function runDemo(env: DemoEnv) {
   let dodgeReady = 0;
   /** his swings are met in turn with a dash out of the way and a parry; `parry` holds the guard for the one on its way */
   let parryNext = false;
+  let swings = 0;
   let parrying = false;
   let knob: P = { x: 0, y: 0 };
   // what the right thumb does while SORA runs: sprint in bursts (her stamina lasts about five seconds), a drag of the camera between
@@ -254,18 +255,24 @@ export function runDemo(env: DemoEnv) {
     for (const k of [2.1, 2.45, 2.8]) tap(t + k, "attack", near(4));
     tap(t + 3.3, "skill", near(7));
     for (const k of [3.95, 4.3]) tap(t + k, "attack", near(4));
-    // (worn to half, he roars in a rage: sooner than the blows alone would take him there)
-    at(t + 4.6, () => {
-      const lord = g()?.demoLord();
-      if (lord && lord.hp > lord.maxHp * 0.5) g()?.demoWear(lord.maxHp * 0.49);
-    });
     tap(t + 5.2, "shoot", far(4));
+    // up, and a cut on the way down
     tap(t + 5.8, "jump", near(4));
     tap(t + 6.05, "attack", near(4.5));
     for (const k of [6.6, 6.95]) tap(t + k, "attack", near(4));
-    tap(t + 8.35, "skill", near(7));
-    tap(t + 8.0, "attack", near(4));
-    at(t + 8.4, () => g()?.charge(2));
+    // (worn to half, he roars in a rage: sooner than the blows alone would take him there)
+    at(t + 7.4, () => {
+      const lord = g()?.demoLord();
+      if (lord && lord.hp > lord.maxHp * 0.5) g()?.demoWear(lord.maxHp * 0.49);
+    });
+    tap(t + 8.4, "skill", near(7));
+    for (const k of [9.0, 9.35, 9.7]) tap(t + k, "attack", near(4));
+    tap(t + 10.4, "shoot", far(4));
+    tap(t + 11.0, "jump", near(4));
+    tap(t + 11.25, "attack", near(4.5));
+    for (const k of [11.8, 12.15, 12.5]) tap(t + k, "attack", near(4));
+    at(t + 13.4, () => g()?.charge(2));
+    tap(t + 13.45, "skill", near(7));
     // the lotus tempest (pressed again while she is still reeling from a blow and it will not go)
     const ult = (k: number, tries: number) => {
       tap(k, "ult");
@@ -281,7 +288,7 @@ export function runDemo(env: DemoEnv) {
         }
       });
     };
-    ult(t + 9.0, 8);
+    ult(t + 14.0, 8);
   }
 
   /** while running: sprint for four seconds, let the stamina come back, sprint again (the camera left to follow her, as a player leaves it) */
@@ -336,9 +343,13 @@ export function runDemo(env: DemoEnv) {
         // he swings: in turn, a dash off to one side and a little back, out of the blow's arc, or a parry
         if (lord.attacking && d < 5.5 && t >= dodgeReady) {
           dodgeReady = t + 1.3;
-          // (a parry only when her hands are free: mid-move, the guard will not go up)
-          parryNext = !parryNext && !g.hero.busy;
-          if (parryNext) {
+          // of every three swings she dashes out of one, parries one (if her hands are free: mid-move the
+          // guard will not go up) and takes one: he is a lord, and he lands his blows
+          swings++;
+          parryNext = swings % 3 === 2 && !g.hero.busy;
+          if (swings % 3 === 0) {
+            // (taken)
+          } else if (parryNext) {
             // she stands her ground, facing him, and waits for the blow
             parrying = true;
             g.demoHoldOff();

@@ -48,6 +48,10 @@ interface Spec {
   runSpeed: number;
   /** a boss: it roars as it arrives and again in a rage at half health, and only a parry makes it flinch */
   boss?: boolean;
+  /** blows it may throw straight after one another (one fewer until it rages) */
+  combo?: number;
+  /** a charge from afar: it crouches for `windup` s, then drives through where she stood at `speed`, bowling her over */
+  charge?: { min: number; max: number; every: number; windup: number; speed: number; hit: HitSpec };
 }
 
 /** The tiger lord's roar: a blast of air that throws SORA back if she stands close. */
@@ -103,6 +107,8 @@ const SPECS: Record<MonsterKind, Spec> = {
       { clip: "slam", speed: 1.3, hit: { range: 4.6, arc: 180, damage: 16, kind: "heavy", clip: "waveHit" }, quake: 7 },
     ],
     cooldown: [1.1, 2.1],
+    combo: 2,
+    charge: { min: 5.5, max: 16, every: 5, windup: 0.5, speed: 15, hit: { range: 99, arc: 180, damage: 14, kind: "heavy", clip: "waveHit" } },
     xp: 400,
     stun: 0.9,
     runClip: "run",
@@ -170,7 +176,7 @@ const V = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 let ids = 1000;
 
-type State = "idle" | "wander" | "chase" | "attack" | "cast" | "stun" | "roar" | "dying" | "gone";
+type State = "idle" | "wander" | "chase" | "attack" | "cast" | "charge" | "stun" | "roar" | "dying" | "gone";
 
 /** A red "!" that pops over a monster's head the moment it notices SORA. */
 function alertMaterial() {
@@ -225,6 +231,11 @@ export class Monster {
   private until = 0;
   private nextAttack = 0;
   private nextCast = 0;
+  private nextCharge = 0;
+  /** blows left to throw straight on in this combo */
+  private chainLeft = 0;
+  /** the charge: where it drives through to */
+  private readonly chargeTo = new THREE.Vector2();
   private blow: Spec["attacks"][number] | null = null;
   private landed = false;
   private push = new THREE.Vector2();
@@ -286,7 +297,7 @@ export class Monster {
     return forwardOf(this.yaw);
   }
   get busy() {
-    return this.state === "attack" || this.state === "cast" || this.state === "stun" || this.state === "roar";
+    return this.state === "attack" || this.state === "cast" || this.state === "charge" || this.state === "stun" || this.state === "roar";
   }
   get airborne() {
     return false;
@@ -338,6 +349,7 @@ export class Monster {
   wake(time: number) {
     this.aggro = this.wasAggro = true;
     this.nextAttack = time + 0.8;
+    this.nextCharge = time + 3;
     if (this.spec.boss) this.roar();
     else this.state = "chase";
   }
@@ -494,6 +506,19 @@ export class Monster {
           this.roar();
           break;
         }
+        // far off: the charge
+        const charge = s.charge;
+        if (charge && dist > charge.min && dist < charge.max && time > this.nextCharge && hero.hp > 0 && ctx.tokens.take(this.id)) {
+          this.state = "charge";
+          this.t = 0;
+          this.landed = false;
+          this.nextCharge = time + charge.every * (0.8 + this.rand() * 0.4) / this.fury;
+          // through where she stands and a little beyond
+          V2.copy(toHero).normalize();
+          this.chargeTo.set(hero.pos.x + V2.x * 3, hero.pos.y + V2.y * 3);
+          this.body.play("roar", { loop: false, fade: 0.1, speed: 2.2 });
+          break;
+        }
         const cast = s.cast;
         if (cast && dist > cast.min && dist < cast.max && time > this.nextCast && hero.hp > 0) {
           this.state = "cast";
@@ -504,6 +529,7 @@ export class Monster {
           break;
         }
         if (dist < s.reach && time > this.nextAttack && hero.hp > 0 && ctx.tokens.take(this.id)) {
+          this.chainLeft = s.combo && this.rand() < (this.raged ? 0.85 : 0.6) ? s.combo - (this.raged ? 0 : 1) : 0;
           this.blow = s.attacks[Math.floor(this.rand() * s.attacks.length)];
           this.state = "attack";
           this.t = 0;
@@ -528,7 +554,48 @@ export class Monster {
           ctx.shake(this.spec.heavy ? (s.boss ? 0.2 : 0.12) : 0.03);
           if (blow.quake) ctx.quake?.(V2.set(this.pos.x, this.pos.y, this.groundZ), blow.quake);
         }
+        // a combo: the next blow follows at once, while she is still in reach
+        if (this.chainLeft > 0 && this.t > impact + 0.28 && dist < s.reach + 1.5 && hero.hp > 0) {
+          this.chainLeft--;
+          this.blow = s.attacks[(s.attacks.indexOf(blow) + 1) % s.attacks.length];
+          this.t = 0;
+          this.landed = false;
+          this.body.play(this.blow.clip, { loop: false, fade: 0.06, speed: this.blow.speed * this.fury * 1.1 });
+          break;
+        }
         if (this.t > impact + (this.spec.heavy ? 0.7 : 0.45)) this.endAttack(time);
+        break;
+      }
+      case "charge": {
+        const charge = s.charge!;
+        if (this.t < charge.windup) {
+          // crouched, eyes on her
+          this.turnTo(V.set(this.chargeTo.x - this.pos.x, this.chargeTo.y - this.pos.y, 0), dt, 6);
+          break;
+        }
+        if (this.t - dt < charge.windup) {
+          this.body.play(s.runClip, { fade: 0.08, speed: 2.2 });
+          ctx.quake?.(V2.set(this.pos.x, this.pos.y, this.groundZ), 3);
+        }
+        const to = V.set(this.chargeTo.x - this.pos.x, this.chargeTo.y - this.pos.y, 0);
+        const left = to.length();
+        this.turnTo(to, dt, 8);
+        const step = Math.min(left, charge.speed * this.fury * dt);
+        if (left > 1e-3) {
+          this.pos.x += (to.x / left) * step;
+          this.pos.y += (to.y / left) * step;
+        }
+        // through her: bowled over
+        if (!this.landed && dist < s.radius + 1.3 && hero.hp > 0) {
+          this.landed = true;
+          ctx.combat.blast(this as unknown as Actor, hero, charge.hit);
+          ctx.shake(0.25);
+          ctx.quake?.(V2.set(hero.pos.x, hero.pos.y, this.groundZ), 5);
+        }
+        if (left < 0.3 || this.t > charge.windup + 1.1) {
+          this.endAttack(time);
+          this.anim("idle", 1);
+        }
         break;
       }
       case "cast": {
