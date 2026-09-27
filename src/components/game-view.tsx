@@ -15,9 +15,11 @@ import { Explore, type ExploreHud as ExploreHudState } from "@/battle/world/expl
 import { loadWorld } from "@/battle/world/load-world";
 import { loadCreatures } from "@/battle/world/load-creatures";
 import { pointsFree, RANK_MAX, type SkillId } from "@/battle/world/skills";
-import { Controls } from "@/components/game/controls";
+import { Controls, type Synth } from "@/components/game/controls";
 import { ExploreHud } from "@/components/game/explore-hud";
 import { Hud } from "@/components/game/hud";
+import { runDemo } from "@/components/game/demo";
+import { type FingerApi, Fingers } from "@/components/game/fingers";
 import { LoadingScreen, useLoadProgress } from "@/components/game/loading";
 import { MainMenu, SettingsSheet, StageSelect } from "@/components/game/menu";
 import { DefeatCard, PauseCard, ResultsCard, ValleyCard } from "@/components/game/overlays";
@@ -96,7 +98,7 @@ function putList(sv: SharedValue<number[]>, v: ArrayLike<number>) {
   sv.value = copy;
 }
 
-export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart?: boolean; brawl?: number; boss?: number }) {
+export function GameView({ autostart = false, brawl = 0, boss = 0, demo = false }: { autostart?: boolean; brawl?: number; boss?: number; demo?: boolean }) {
   useKeepAwake();
   const [fontsLoaded] = useFonts({ ManropeSemiBold: require("../../assets/fonts/Manrope-SemiBold.ttf") });
   const ref = useRef<CanvasRef>(null);
@@ -111,6 +113,10 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
   const [page, setPage] = useState<MenuPage>("home");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const load = useLoadProgress();
+  // the showcase demo's programmed thumbs (?demo=1)
+  const synth = useRef<Synth | null>(null);
+  const fingers = useRef<FingerApi | null>(null);
+  const demoRan = useRef(false);
   const [hud, setHud] = useState<HudState>(EMPTY_HUD);
   const [pops, setPops] = useState<Pop[]>([]);
   const [pausedView, setPausedView] = useState(false);
@@ -234,6 +240,27 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
     // ?brawl=N: the fight benchmark, N packs at once
     if (brawl) roam.game.brawl(brawl);
   }, [autostart, brawl, boss, roam, view, startExplore]);
+
+  // ?demo=1: a few seconds on the menu, then the programmed thumbs play (see demo.ts); it runs on through
+  // the change of screen it makes itself, and stops only when the view goes
+  const demoStop = useRef<() => void>(() => {});
+  useEffect(() => () => demoStop.current(), []);
+  useEffect(() => {
+    if (!demo || demoRan.current || !roam || view !== "menu") return;
+    demoRan.current = true;
+    setTimeout(() => {
+      const { width, height } = size.current;
+      demoStop.current = runDemo({
+        game: () => explore.current,
+        synth,
+        fingers,
+        window: { width, height },
+        menuButton: { x: width * 0.5, y: height * 0.67 },
+        explore: (then) => startExplore(true, then),
+      });
+      // (a few seconds on the menu first: time for a screen recording to begin)
+    }, 6000);
+  }, [demo, roam, view, startExplore]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -475,6 +502,7 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
               finishable={false}
               size={save.settings.buttons}
               onPress={buttonTap}
+              synthRef={demo ? synth : undefined}
             />
           )}
           {/* over the controls: its own buttons (pause, the quest tab) take touches, the rest lets them through */}
@@ -502,6 +530,7 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
       )}
       {settingsOpen && <SettingsSheet settings={save.settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />}
       <Animated.View style={[StyleSheet.absoluteFill, styles.curtain, { pointerEvents: "none" }, curtainStyle]} />
+      {demo && <Fingers api={fingers} />}
       {view === "loading" && <LoadingScreen shown={load.shown} label={load.label} />}
       {view === "error" && (
         <View style={styles.center}>

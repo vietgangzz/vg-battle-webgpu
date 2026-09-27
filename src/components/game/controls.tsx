@@ -45,6 +45,20 @@ export interface Pad {
 
 export type ButtonId = "attack" | "jump" | "dash" | "guard" | "skill" | "ult" | "finish" | "shoot" | "sprint";
 
+/**
+ * Touches made by a program, not a hand (the showcase demo): they go through
+ * the same handling as real ones, so the stick rises and follows, buttons
+ * press and flare, and the game answers as it would to a thumb. Points are in
+ * the controls' own frame.
+ */
+export interface Synth {
+  down(id: string, x: number, y: number): void;
+  move(id: string, x: number, y: number): void;
+  up(id: string): void;
+  /** the buttons' centres, the stick's resting place and the frame's size */
+  layout(): { buttons: { id: ButtonId; x: number; y: number }[]; home: { x: number; y: number }; width: number; height: number };
+}
+
 interface Button {
   id: ButtonId;
   /** offset from the attack button's centre (pt) and radius */
@@ -105,6 +119,7 @@ export const Controls = memo(function Controls({
   shot,
   stamina,
   winded,
+  synthRef,
 }: {
   pad: Pad;
   energy: SharedValue<number>;
@@ -122,6 +137,8 @@ export const Controls = memo(function Controls({
   size?: number;
   /** each button press, for haptics */
   onPress?: (id: ButtonId) => void;
+  /** filled with the programmed touches' entry (the demo) */
+  synthRef?: { current: Synth | null };
 }) {
   const insets = useSafeAreaInsets();
   const frame = useRef({ x: 0, y: 0, width: 0, height: 0 });
@@ -291,6 +308,42 @@ export const Controls = memo(function Controls({
 
   // resting, the buttons sit back; touched, they come forward
   const cluster = useAnimatedStyle(() => ({ opacity: 0.62 + 0.38 * awake.value }));
+
+  // programmed touches take the same road as a hand's (the latest handlers, as this render made them)
+  const handlersRef = useRef({ onStart, onMove, onEnd, buttons, home, size });
+  useEffect(() => {
+    handlersRef.current = { onStart, onMove, onEnd, buttons, home, size };
+  });
+  useEffect(() => {
+    if (!synthRef) return;
+    const down = new Set<string>();
+    const ev = (id: string, x: number, y: number) =>
+      ({
+        nativeEvent: { changedTouches: [{ identifier: id, pageX: x + frame.current.x, pageY: y + frame.current.y }], touches: [...down].map((d) => ({ identifier: d })) },
+      }) as unknown as GestureResponderEvent;
+    synthRef.current = {
+      down(id, x, y) {
+        down.add(id);
+        handlersRef.current.onStart(ev(id, x, y));
+      },
+      move(id, x, y) {
+        if (down.has(id)) handlersRef.current.onMove(ev(id, x, y));
+      },
+      up(id) {
+        if (!down.delete(id)) return;
+        handlersRef.current.onEnd(ev(id, 0, 0));
+      },
+      layout() {
+        const h = handlersRef.current;
+        // (the frame the touches are read against must be measured too)
+        if (!frame.current.width) return { buttons: [], home: h.home, width: 0, height: 0 };
+        return { buttons: h.buttons.map((b) => ({ id: b.id, x: b.x, y: b.y })), home: h.home, width: h.size.width, height: h.size.height };
+      },
+    };
+    return () => {
+      synthRef.current = null;
+    };
+  }, [synthRef]);
 
   return (
     <View

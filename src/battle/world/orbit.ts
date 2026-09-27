@@ -9,6 +9,9 @@ import type { Actor } from "../game/actor";
 
 const DEG = Math.PI / 180;
 
+/** raised (see OrbitCamera.high), the lens looks down on her at least this steeply */
+const HIGH_PITCH = 33 * DEG;
+
 export class OrbitCamera {
   readonly position = new THREE.Vector3();
   readonly target = new THREE.Vector3();
@@ -28,6 +31,9 @@ export class OrbitCamera {
   private placed = false;
   /** the floor under the lens, eased (see update) */
   private floorZ = -Infinity;
+  /** 0..1: how far the lens is raised to look down on her (on the bridge: from its own height the railings hid her) */
+  high = 0;
+  private highNow = 0;
 
   /** A drag of the thumb: dx, dy in points. */
   look(dx: number, dy: number, now: number) {
@@ -73,11 +79,13 @@ export class OrbitCamera {
       this.yaw += d * (1 - Math.exp(-dt * 1.2)) * Math.min(1, hero.wish.length());
     }
 
-    const cp = Math.cos(this.pitch);
+    this.highNow = THREE.MathUtils.damp(this.highNow, this.high, 2.2, dt);
+    const pitch = this.pitch + this.highNow * Math.max(0, HIGH_PITCH - this.pitch);
+    const cp = Math.cos(pitch);
     this.position.set(
       this.focus.x - Math.cos(this.yaw) * cp * this.dist,
       this.focus.y - Math.sin(this.yaw) * cp * this.dist,
-      this.focus.z + Math.sin(this.pitch) * this.dist,
+      this.focus.z + Math.sin(pitch) * this.dist,
     );
     // a wall between her and the lens: come in front of it (quickly), and ease back out once past
     if (clearance) {

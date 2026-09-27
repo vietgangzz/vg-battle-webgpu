@@ -343,6 +343,18 @@ export class World {
     return Math.max(g, d.a[2] + (d.b[2] - d.a[2]) * t + d.rise * Math.sin(Math.PI * t) + 0.2);
   }
 
+  /** Is (x, y) on the bridge's deck (or just off its end)? */
+  onBridge(x: number, y: number) {
+    const d = this.data.manifest.deck;
+    if (!d) return false;
+    const dx = d.b[0] - d.a[0];
+    const dy = d.b[1] - d.a[1];
+    const len = Math.hypot(dx, dy);
+    const t = ((x - d.a[0]) * dx + (y - d.a[1]) * dy) / (len * len);
+    const off = Math.abs((x - d.a[0]) * dy - (y - d.a[1]) * dx) / len;
+    return t > -0.04 && t < 1.04 && off < 2.4;
+  }
+
   /** Is this point inside something solid (a house, a tower's foot, the hall)? */
   solidAt(p: THREE.Vector3) {
     for (const c of this.data.manifest.colliders) {

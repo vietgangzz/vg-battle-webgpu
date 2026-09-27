@@ -1017,6 +1017,8 @@ export class Explore {
     fs.pose(this.fx.frames, this.fx.offsets);
     player.post.update(AMBIENT_FRAME, this.fx.postFrames(this.postFrames));
     const foe = this.phase === "boss" || this.phase === "bossIntro" || this.phase === "clear" ? this.lord : this.hero.target;
+    // on the bridge the lens rises to look down on her over the railings
+    this.camera.high = this.world.onBridge(this.hero.pos.x, this.hero.pos.y) ? 1 : 0;
     this.camera.update(
       DT,
       this.clock,
@@ -1444,6 +1446,27 @@ export class Explore {
   private brawling = 0;
   private brawlNext = 0;
   private brawlT = 0;
+
+  // ---------------------------------------------------------------- the showcase demo (?demo=1)
+  /** The showcase demo sets out from where the valley starts; no camp springs an ambush on the way. */
+  demoSetup() {
+    for (const c of this.camps) c.state = "cleared";
+  }
+
+  /** The ultimate charged once (the Heaven Pierce) or twice (the lotus tempest). */
+  charge(times: 1 | 2) {
+    this.combat.energy = ENERGY_MAX * times;
+  }
+
+  /** The fight is over: what is left of the packs goes quietly, and they stay away. */
+  demoCalm() {
+    this.brawl(0);
+    for (const m of this.monsters) if (m.alive) m.remove();
+    for (const p of this.packs) {
+      p.state = "gone";
+      p.t = 1e9;
+    }
+  }
 
   /**
    * Straight to the pagoda courtyard (opened with ?boss=1): SORA in front of

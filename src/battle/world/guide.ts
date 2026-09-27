@@ -23,16 +23,19 @@ const FLOW = 2.6;
 /** the stream starts this far ahead of her and reaches this far */
 const NEAR = 3.2;
 const FAR = NEAR + ARROWS * SPACING;
-/** hovering over the lawn's blade tips */
-const HOVER = 0.55;
+/** hovering just over the lawn's blade tips */
+const HOVER = 0.5;
 
 const KIND_COLORS: [number, number, number][] = [
   [1.0, 0.68, 0.12],
   [1.0, 0.4, 0.1],
   [1.0, 0.16, 0.22],
 ];
-/** the chevrons stand tilted up toward the lens behind her: from the low game camera a flat one is a sliver */
-const TILT = 1.05;
+/** the chevrons lie on the ground (a hair of tilt toward the lens): arrows pointing the way, not up at the sky */
+const TILT = 0.16;
+/** laid flat they are drawn longer along the way and a little wider, so the low camera still reads them */
+const LONG = 1.9;
+const WIDE = 1.45;
 
 export interface GroundQuery {
   height(x: number, y: number): number;
@@ -92,7 +95,8 @@ export class Guide {
     // chevrons: bright gold, each instance dimmed by its colour (the stream's fade)
     // brighter toward the tip
     const tip = TSL.positionLocal.x.add(0.62).div(1.24).clamp(0, 1);
-    const am = glow(this.tint.mul(tip.mul(0.9).add(0.55)), TSL.float(1));
+    // (laid flat they are seen at a glancing angle over the grass: brighter than when they stood up)
+    const am = glow(this.tint.mul(tip.mul(1.6).add(1.0)), TSL.float(1));
     this.arrows = new THREE.InstancedMesh(chevronGeometry(), am, ARROWS);
     this.arrows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < ARROWS; i++) this.arrows.setColorAt(i, C.setRGB(0, 0, 0));
@@ -188,7 +192,8 @@ export class Guide {
       // a gentle ripple along the stream
       const lift = HOVER + Math.sin(time * 5 - i * 0.9) * 0.04;
       P.set(x, y, h + lift);
-      S.setScalar(0.7 + 0.3 * a);
+      const k = 0.7 + 0.3 * a;
+      S.set(LONG * k, WIDE * k, 1);
       M.compose(P, Q, S);
       this.arrows.setMatrixAt(i, M);
       this.arrows.setColorAt(i, C.setRGB(a, a, a));
