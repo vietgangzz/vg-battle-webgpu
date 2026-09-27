@@ -50,10 +50,12 @@ const TO_BRIDGE: P[] = [
   { x: -23.6, y: -14 },
   { x: -23.2, y: -8 },
 ];
-/** on over the top and down the far side */
+/** on over the top, down the far side (the deck ends at y 6) and out onto the open grass past it, where the tiger lord meets her (checked with tools/route-check.ts and tools/demo-boss-check.ts) */
 const ACROSS: P[] = [
   { x: -22.8, y: -1 },
   { x: -22.5, y: 4 },
+  { x: -22.3, y: 9 },
+  { x: -23.5, y: 14 },
 ];
 
 export function runDemo(env: DemoEnv) {
@@ -224,7 +226,7 @@ export function runDemo(env: DemoEnv) {
     // and as she steps off it the tiger lord bars her way
     route = [...ACROSS];
     arrived = callLord;
-    at(t + 6.5, callLord);
+    at(t + 9, callLord);
   }
 
   function callLord() {
@@ -243,7 +245,8 @@ export function runDemo(env: DemoEnv) {
     const near = (m: number) => () => {
       const lord = g()?.demoLord();
       const h = g()?.hero.pos;
-      return !!lord && !!h && Math.hypot(lord.pos.x - h.x, lord.pos.y - h.y) < m && now() > dodgeUntil;
+      // (not into his wind-up: a player sees it coming)
+      return !!lord && !!h && Math.hypot(lord.pos.x - h.x, lord.pos.y - h.y) < m && now() > dodgeUntil && !lord.attacking;
     };
     const far = (m: number) => () => !near(m)();
     tap(t + 0.3, "shoot");
@@ -333,10 +336,12 @@ export function runDemo(env: DemoEnv) {
         // he swings: in turn, a dash off to one side and a little back, out of the blow's arc, or a parry
         if (lord.attacking && d < 5.5 && t >= dodgeReady) {
           dodgeReady = t + 1.3;
-          parryNext = !parryNext;
+          // (a parry only when her hands are free: mid-move, the guard will not go up)
+          parryNext = !parryNext && !g.hero.busy;
           if (parryNext) {
             // she stands her ground, facing him, and waits for the blow
             parrying = true;
+            g.demoHoldOff();
             dodgeUntil = t + 1.0;
           } else {
             dodgeSide = -dodgeSide;
@@ -350,7 +355,7 @@ export function runDemo(env: DemoEnv) {
         // the guard goes up just before the blow lands (inside the parry's window), and comes down after
         if (parrying && lord.blowIn <= 0.17) {
           parrying = false;
-          hold(t + 0.02, t + 0.45, "guard");
+          if (!g.hero.busy) hold(t + 0.02, t + 0.45, "guard");
           dodgeUntil = t + 0.55;
         } else if (parrying && !lord.attacking) parrying = false;
         if (parrying || (parryNext && t < dodgeUntil)) {

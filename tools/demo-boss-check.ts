@@ -30,7 +30,7 @@ const cblobs: Record<string, ArrayBuffer> = {};
 for (const name of Object.keys(cman.creatures)) cblobs[name] = read(`assets/creatures/${name}.bin`);
 const player = { fs, post, renderer, view: framing, pace: () => 1, renderPosed(p: () => void) { tick(); p(); post.render(); return true; } };
 const log: string[] = [];
-const game = new Explore(player as never, data, { hud: () => {}, sound: (n) => log.push(`  ${T().toFixed(2)} sound ${n}`) }, buildCreatures(cman, cblobs));
+const game = new Explore(player as never, data, { hud: () => {}, sound: (n) => log.push(`  ${T().toFixed(2)} sound ${n}`), pop: (p) => p.kind === "parry" && log.push(`  ${T().toFixed(2)} PARRIED`) }, buildCreatures(cman, cblobs));
 game.start(true);
 await game.warm((o) => renderer.compileAsync(o, fs.camera, fs.scene));
 await renderer.compileAsync(fs.scene, fs.camera);
@@ -53,7 +53,7 @@ const shoot = async (label: string) => {
 game.demoSetup();
 for (let i = 0; i < 200; i++) step();
 // SORA off the far end of the bridge (or at x,y,yaw), the lord called to meet her there
-const [sx, sy, syaw] = (process.argv[2]?.startsWith("--") ? "-22.5,4,90" : (process.argv[2] ?? "-22.5,4,90")).split(",").map(Number);
+const [sx, sy, syaw] = (process.argv[2]?.startsWith("--") ? "-23.2,12.5,100" : (process.argv[2] ?? "-23.2,12.5,100")).split(",").map(Number);
 let knob = { x: 0, y: 0 };
 const steer = (goal: { x: number; y: number } | null, ease: number) => {
   let want = { x: 0, y: 0 };
@@ -79,10 +79,12 @@ if (process.argv[2] === "--soldiers") {
   for (let i = 0; i < 30; i++) step();
   game.brawl(2, false);
   const t0 = t;
-  const shots = [1.2, 2.6, 4.2, 5.0, 5.6, 6.8];
+  const shots = [1.2, 2.2, 2.95, 4.2, 5.6, 6.8];
   const taps: [number, () => void][] = [
-    ...[0.8, 1.15, 1.5, 1.85, 2.8, 3.15].map((k) => [k, () => game.attack()] as [number, () => void]),
-    [2.3, () => game.dash()],
+    ...[0.8, 1.15, 1.5, 2.85].map((k) => [k, () => game.attack()] as [number, () => void]),
+    [2.0, () => game.skill()],
+    [2.6, () => game.jump()],
+    [3.3, () => game.dash()],
     [3.7, () => game.shoot()],
     [4.1, () => game.charge(1)],
     [4.7, () => game.ult()],
@@ -96,6 +98,7 @@ if (process.argv[2] === "--soldiers") {
     if (foe && Math.hypot(foe.pos.x - hero.pos.x, foe.pos.y - hero.pos.y) > 2.6) steer(foe.pos, 0.1);
     else steer(null, 0.1);
     step();
+    if (hero.action && hero.action.t < 1 / 60 + 1e-6) log.push(`${(t - t0).toFixed(2)} move ${hero.action.def.name}`);
     if (shots.length && t - t0 >= shots[0]) await shoot(`${shots.shift()}s`);
   }
   console.log(log.filter((l) => !l.includes("sound")).join("\n"));
@@ -110,11 +113,13 @@ let dodgeSide = 1;
 let dodgeDir = { x: 0, y: 0 };
 let dodgeUntil = 0;
 let dodgeReady = 0;
+let parryNext = false;
+let parrying = false;
 const due: { at: number; run: () => void }[] = [];
 const at = (s: number, run: () => void) => due.push({ at: s, run });
 const near = (m: number) => {
   const l = game.demoLord();
-  return !!l && Math.hypot(l.pos.x - hero.pos.x, l.pos.y - hero.pos.y) < m && t > dodgeUntil;
+  return !!l && Math.hypot(l.pos.x - hero.pos.x, l.pos.y - hero.pos.y) < m && t > dodgeUntil && !l.attacking;
 };
 let hp = hero.hp;
 const shots = [1, 3, 5, 7, 9.3, 10.2];
@@ -152,7 +157,13 @@ for (; t < 120; ) {
     const dx = hero.pos.x - lord.pos.x;
     const dy = hero.pos.y - lord.pos.y;
     const d = Math.hypot(dx, dy) || 1;
-    if (lord.attacking && d < 5.5 && t >= dodgeReady) {
+    if (lord.attacking && d < 5.5 && t >= dodgeReady && (parryNext = !parryNext && !hero.busy)) {
+      dodgeReady = t + 1.3;
+      parrying = true;
+      game.demoHoldOff();
+      dodgeUntil = t + 1.0;
+      log.push(`${(t - tb).toFixed(2)} PARRY waiting, blow in ${lord.blowIn.toFixed(2)}`);
+    } else if (lord.attacking && d < 5.5 && t >= dodgeReady) {
       dodgeSide = -dodgeSide;
       dodgeDir = { x: (dx / d) * 0.45 - (dy / d) * 0.9 * dodgeSide, y: (dy / d) * 0.45 + (dx / d) * 0.9 * dodgeSide };
       dodgeUntil = t + 0.45;
@@ -162,14 +173,26 @@ for (; t < 120; ) {
       at(t + 0.26, () => game.dash());
       at(t + 0.4, () => log.push(`   … ${hero.action?.def.name === "dash" ? "dashed" : `no dash (${hero.action?.def.name ?? "-"})`}`));
     }
-    if (t < dodgeUntil) {
+    if (parrying && lord.blowIn <= 0.17) {
+      parrying = false;
+      dodgeUntil = t + 0.55;
+      if (!hero.busy) at(t + 0.02, () => game.setGuard(true));
+      at(t + 0.45, () => game.setGuard(false));
+    } else if (parrying && !lord.attacking) parrying = false;
+    if (parrying || (parryNext && t < dodgeUntil)) {
+      // standing, facing him
+    } else if (t < dodgeUntil) {
       goal = { x: hero.pos.x + dodgeDir.x * 4, y: hero.pos.y + dodgeDir.y * 4 };
       ease = 0.4;
     } else if (d > 2.9) goal = lord.pos;
   }
   steer(goal, ease);
   step();
-  if (hero.hp < hp - 0.5) log.push(`${(t - tb).toFixed(2)} she is hit ${(hp - hero.hp).toFixed(0)}`);
+  if (hero.hp < hp - 0.5) {
+    const l = game.demoLord();
+    const face = l ? Math.abs(((hero.yaw - (Math.atan2(l.pos.y - hero.pos.y, l.pos.x - hero.pos.x) * 180) / Math.PI + 540) % 360) - 180) : -1;
+    log.push(`${(t - tb).toFixed(2)} she is hit ${(hp - hero.hp).toFixed(0)} (guard ${hero.guardHeld} since ${(t - hero.guardSince).toFixed(2)}?, off his bearing ${face.toFixed(0)}°, busy ${hero.busy})`);
+  }
   hp = hero.hp;
   const l2 = game.demoLord();
   if (tb >= 0 && !l2 && killed < 0) {

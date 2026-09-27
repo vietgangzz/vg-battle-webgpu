@@ -8,6 +8,7 @@ import * as THREE from "three/webgpu";
 import type { Actor } from "../game/actor";
 
 const DEG = Math.PI / 180;
+const SWING = new THREE.Vector3();
 
 /** raised (see OrbitCamera.high), the lens looks down on her at least this steeply */
 const HIGH_PITCH = 33 * DEG;
@@ -87,7 +88,9 @@ export class OrbitCamera {
       d = Math.atan2(Math.sin(d), Math.cos(d));
       const over = Math.sign(d) * Math.max(0, Math.abs(d) - FIGHT_SLACK);
       const sure = THREE.MathUtils.clamp((Math.hypot(dx, dy) - 1.2) / 2, 0, 1);
-      this.yaw += over * (1 - Math.exp(-dt * 2)) * sure;
+      const to = this.yaw + over * (1 - Math.exp(-dt * 2)) * sure;
+      // (never round behind a trunk or a wall: a turn that would put one between her and the lens is not made)
+      if (!clearance || clearance(this.focus, this.placeAt(to, this.pitch, THREE.MathUtils.lerp(this.dist, wantDist, 0.5), SWING)) >= Math.min(0.95, this.clear)) this.yaw = to;
     }
     this.dist = THREE.MathUtils.damp(this.dist, wantDist, 3, dt);
 
@@ -134,6 +137,12 @@ export class OrbitCamera {
       this.target.y += Math.cos(this.shakeT * 71) * s;
       this.target.z += Math.sin(this.shakeT * 97 + 1) * s;
     }
+  }
+
+  /** Where the lens would stand at `yaw`, `pitch`, `dist` from the focus (into `out`). */
+  private placeAt(yaw: number, pitch: number, dist: number, out: THREE.Vector3) {
+    const cp = Math.cos(pitch);
+    return out.set(this.focus.x - Math.cos(yaw) * cp * dist, this.focus.y - Math.sin(yaw) * cp * dist, this.focus.z + Math.sin(pitch) * dist);
   }
 
   shake(amount: number) {

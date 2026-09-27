@@ -1496,6 +1496,12 @@ export class Explore {
     return t && this.phase === "boss" && t.alive ? { pos: t.pos, attacking: t.attacking, blowIn: t.blowIn, hp: t.hp, maxHp: t.maxHp } : null;
   }
 
+  /** The demo's thumb sees his wind-up and holds off: blows pressed a moment ago are not thrown after all (the guard can go up). */
+  demoHoldOff() {
+    const b = this.combat.buffer;
+    b.attack = b.skill = b.shoot = b.jump = -1;
+  }
+
   /** Whether the ultimate is still charged (the demo's thumb presses it again until it goes). */
   demoCharged() {
     return this.combat.energy >= ENERGY_MAX;
