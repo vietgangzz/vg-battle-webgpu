@@ -49,6 +49,8 @@ export class FilmPlayer {
   private scale = MAX_SCALE;
   /** resolution held (see lockScale) */
   private locked = false;
+  /** the lowest the scene passes' resolution may go (see adaptScale) */
+  private minScale = MIN_SCALE;
   private avgInterval = 0;
   private lastRender = 0;
   private settle = 0;
@@ -217,11 +219,22 @@ export class FilmPlayer {
     return Math.min(2, Math.max(1, Math.round(since / this.budget)));
   }
 
-  /** Hold the scene passes at full resolution (the game: its cost is the CPU's, and a softer picture would not buy frames back). */
+  /** Hold the scene passes at one resolution. */
   lockScale(scale = 1) {
     this.locked = true;
     this.scale = scale;
     this.post.setRenderScale(scale);
+  }
+
+  /**
+   * Let the scene passes' resolution follow the frame rate, from full down to
+   * `min` of native: the game on a phone whose GPU runs short (a 16 Pro Max
+   * drew the valley at 25 frames a second at full size), while a device with
+   * room to spare stays sharp.
+   */
+  adaptScale(min: number) {
+    this.locked = false;
+    this.minScale = min;
   }
 
   /** Dynamic resolution: step the scene passes down when frames run late, back up when there is headroom. */
@@ -234,7 +247,7 @@ export class FilmPlayer {
     this.avgInterval = this.avgInterval ? this.avgInterval * 0.9 + interval * 0.1 : interval;
     if (--this.settle > 0) return;
     let next = this.scale;
-    if (this.avgInterval > this.budget * 1.15) next = Math.max(MIN_SCALE, this.scale - 0.05);
+    if (this.avgInterval > this.budget * 1.15) next = Math.max(this.minScale, this.scale - 0.05);
     else if (this.avgInterval < this.budget * 1.02) next = Math.min(MAX_SCALE, this.scale + 0.025);
     if (next !== this.scale) {
       this.scale = next;

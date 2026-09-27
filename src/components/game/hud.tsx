@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
   FadeInDown,
@@ -137,16 +137,19 @@ export const LowHealth = memo(function LowHealth({ low }: { low: boolean }) {
     p.value = low ? withRepeat(withSequence(withTiming(1, { duration: 520 }), withTiming(0.35, { duration: 520 })), -1) : withTiming(0, { duration: 300 });
   }, [low, p]);
   const style = useAnimatedStyle(() => ({ opacity: p.value }));
+  // sized in points from the window, not in percent: a percent-sized Svg kept the size it first measured
+  // (before the screen turned) and showed as a red box over part of the picture
+  const { width, height } = useWindowDimensions();
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { pointerEvents: "none" }, style]}>
-      <Svg width="100%" height="100%">
+      <Svg width={width} height={height}>
         <Defs>
-          <RadialGradient id="lowHp" cx="50%" cy="50%" r="75%">
+          <RadialGradient id="lowHp" cx={width / 2} cy={height / 2} r={Math.hypot(width, height) / 2} gradientUnits="userSpaceOnUse">
             <Stop offset="0.55" stopColor={CRIMSON} stopOpacity={0} />
             <Stop offset="1" stopColor={CRIMSON} stopOpacity={0.55} />
           </RadialGradient>
         </Defs>
-        <Rect x={0} y={0} width="100%" height="100%" fill="url(#lowHp)" />
+        <Rect x={0} y={0} width={width} height={height} fill="url(#lowHp)" />
       </Svg>
     </Animated.View>
   );

@@ -273,7 +273,20 @@ export class Explore {
     this.combat.energyCap = ENERGY_MAX * 2;
     // what casts a real shadow: SORA's parts (not her afterimages), the boss, the camps' fighters
     for (const a of [this.hero, this.boss, ...this.foes.map((f) => f.actor)])
-      for (const p of a.rig.parts) SunShadow.cast(p);
+      for (const p of a.rig.parts) if (!(a === this.hero && p.name === "sora_body")) SunShadow.cast(p);
+    // SORA's body is 200k triangles: the sun's shadow map draws a plain egg of her size in its place
+    // (a round jelly's shadow is an egg's; on the phone every one of those triangles was paid again)
+    const body = this.hero.rig.parts.find((p) => p.name === "sora_body");
+    if (body) {
+      body.geometry.computeBoundingBox();
+      const bb = body.geometry.boundingBox!;
+      const egg = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), new THREE.MeshBasicNodeMaterial());
+      bb.getCenter(egg.position);
+      bb.getSize(egg.scale);
+      egg.name = "sora_shadow";
+      egg.layers.set(CASTER);
+      body.add(egg);
+    }
     for (const n of this.hero.objects) if (n.includes("tail")) SunShadow.cast(fs.object(n));
     this.bolts = new Bolts(
       (x, y) => this.world.ground.at(x, y),
@@ -1009,7 +1022,7 @@ export class Explore {
       this.clock,
       this.hero,
       foe,
-      (x, y) => this.world.ground.at(x, y),
+      (x, y) => this.world.cameraFloor(x, y),
       (from, to) => this.world.clearance(from, to, 0.6),
     );
     // held upright the picture is narrow: widen the lens until it sees as far to the sides as it would lying down

@@ -147,7 +147,7 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
       const st = player.current?.stats;
       if (!st) return;
       // frames delivered, then the JS thread's share: simulation + scene submit (ms)
-      setFps(`${st.fps} FPS · ${(explore.current?.stepMs ?? 0).toFixed(1)}+${st.drawMs.toFixed(1)}ms`);
+      setFps(`${st.fps} FPS · ${(explore.current?.stepMs ?? 0).toFixed(1)}+${st.drawMs.toFixed(1)}ms${st.scale < 0.995 ? ` · ${Math.round(st.scale * 100)}%` : ""}`);
     }, 500);
     return () => clearInterval(id);
   }, [view]);
@@ -252,8 +252,9 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
         if (!context) return;
         const { width, height } = size.current.width ? size.current : { width: 1, height: 1 };
         const p = await FilmPlayer.create(context, { width, height, pixelRatio: gamePixelRatio() }, { onProgress: setStage });
-        // the game draws at full resolution always (its limit is the CPU's; a softer picture buys nothing)
-        p.lockScale(1);
+        // the game draws at full resolution while it can, and gives up to 30% of it when frames run late
+        // (the phone's GPU, not its CPU, is what runs short)
+        p.adaptScale(0.7);
         if (cancelled) {
           p.dispose();
           return;

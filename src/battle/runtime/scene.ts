@@ -242,9 +242,23 @@ export class FilmScene {
         rt.texture.name = "output";
         return rt;
       };
+      // the mirror is looked up through the mirrored camera it was drawn with, not the screen: between
+      // redraws (every other frame in the game) the picture then stays where it belongs as the camera
+      // turns, instead of sliding with the screen (it shimmered on the phone when the camera swung)
+      const drawnWith = TSL.uniform(new THREE.Matrix4()).setGroup(TSL.renderGroup);
+      const clip = drawnWith.mul(TSL.vec4(TSL.positionWorld, 1));
+      const ndc = clip.xy.div(clip.w);
+      r.uvNode = TSL.vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
       const redraw = base.updateBefore.bind(base);
+      const mirror = base as unknown as { getVirtualCamera: (c: THREE.Camera) => THREE.Camera };
       let n = 0;
-      base.updateBefore = (frame) => (++n % this.reflectEvery === 0 ? redraw(frame) : undefined);
+      base.updateBefore = (frame) => {
+        if (++n % this.reflectEvery !== 0) return undefined;
+        const out = redraw(frame);
+        const vc = mirror.getVirtualCamera((frame as { camera: THREE.Camera }).camera);
+        (drawnWith.value as THREE.Matrix4).multiplyMatrices(vc.projectionMatrix, vc.matrixWorldInverse);
+        return out;
+      };
       reflection = [t3.fromTSL(r.level(TSL.float(0)).rgb, d.vec3f), t3.fromTSL(r.level(TSL.float(5)).rgb, d.vec3f)];
     }
     this.reflection = reflection;

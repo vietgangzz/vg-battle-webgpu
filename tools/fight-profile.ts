@@ -16,6 +16,8 @@ const arg = (name: string, def: string) => {
 const packIndex = Number(arg("--pack", "4"));
 const env = await setup(Number(arg("--w", "1280")), Number(arg("--h", "720")));
 const { THREE, fs, post, framing, tick, renderer } = env;
+// --msaa N: the game pass's samples (4 in the app)
+if (process.argv.includes("--msaa")) (post as unknown as { gameTarget: { samples: number } }).gameTarget.samples = Number(arg("--msaa", "4"));
 const { WorldData } = await import("../src/battle/world/data");
 const { Explore } = await import("../src/battle/world/explore");
 const { PACKS } = await import("../src/battle/world/monsters");
@@ -148,6 +150,8 @@ game.hero.place(new THREE.Vector3(pack.x - 9, pack.y, 0), 90);
 const measure = async (label: string, seconds: number, act: (i: number) => void) => {
   const cpu: number[] = [];
   const gpu: number[] = [];
+  const ts: number[] = [];
+  const tris: number[] = [];
   const draws: number[] = [];
   renderer.info.autoReset = false;
   for (let i = 0; i < seconds * 60; i++) {
@@ -157,6 +161,7 @@ const measure = async (label: string, seconds: number, act: (i: number) => void)
     game.frame((t += 1 / 60) * 1000);
     const c1 = performance.now();
     draws.push(renderer.info.render.drawCalls);
+    tris.push(renderer.info.render.triangles);
     if (renderer.info.render.drawCalls > 260 && process.argv.includes("--spikes")) {
       const vis: string[] = [];
       fs.scene.traverseVisible((o) => {
@@ -165,6 +170,7 @@ const measure = async (label: string, seconds: number, act: (i: number) => void)
       console.log(`  frame ${i}: ${renderer.info.render.drawCalls} draws, cpu ${(performance.now() - c0).toFixed(1)}ms; top-level visible: ${vis.join(" ")}`);
     }
     await env.device.queue.onSubmittedWorkDone();
+    if (process.env.TS) ts.push(await renderer.resolveTimestampsAsync("render"));
     cpu.push(c1 - c0);
     if (process.argv.includes("--slow") && c1 - c0 > 16) console.log(`  slow ${label} frame ${i}: ${(c1 - c0).toFixed(1)} ms, ${renderer.info.render.drawCalls} draws; ${[...new Set(heard)].join(",")} ${(game as unknown as { monsters: { alive: boolean; kind: string; state: string }[] }).monsters.filter((m) => m.alive).map((m) => m.kind + ":" + m.state).join(" ")}`);
     heard.length = 0;
@@ -173,7 +179,7 @@ const measure = async (label: string, seconds: number, act: (i: number) => void)
   const avg = (a: number[]) => a.reduce((p, q) => p + q, 0) / a.length;
   const p95 = (a: number[]) => [...a].sort((p, q) => p - q)[Math.floor(a.length * 0.95)];
   console.log(
-    `${label}: cpu avg ${avg(cpu).toFixed(2)} p95 ${p95(cpu).toFixed(2)} max ${Math.max(...cpu).toFixed(1)} | gpu-wait avg ${avg(gpu).toFixed(2)} p95 ${p95(gpu).toFixed(2)} | draws avg ${avg(draws).toFixed(0)} max ${Math.max(...draws)}`,
+    `${label}: cpu avg ${avg(cpu).toFixed(2)} p95 ${p95(cpu).toFixed(2)} max ${Math.max(...cpu).toFixed(1)} | gpu-wait avg ${avg(gpu).toFixed(2)} p95 ${p95(gpu).toFixed(2)} | draws avg ${avg(draws).toFixed(0)} max ${Math.max(...draws)} | tris avg ${(avg(tris) / 1e6).toFixed(2)}M${ts.length ? ` | gpu-time avg ${avg(ts.filter((x) => x > 0)).toFixed(2)} p95 ${p95(ts.filter((x) => x > 0)).toFixed(2)}` : ""}`,
   );
 };
 // one frame's draws, pass by pass (--passes)
@@ -234,6 +240,8 @@ if (process.argv.includes("--tree")) {
   console.log([...top].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => `${v} ${k}`).join("\n"));
 }
 if (process.argv.includes("--noshadow")) (game as unknown as { sunShadow: { strength: number } }).sunShadow.strength = 0;
+// --noreflect: the river's mirror never redrawn
+if (process.argv.includes("--noreflect")) (fs as unknown as { reflectEvery: number }).reflectEvery = 1e9;
 // --floor: the valley hidden, to see what the frame costs without it (post chain, SORA, the fight)
 if (process.argv.includes("--floor")) {
   const w = (game as unknown as { world: { group: import("three/webgpu").Group } }).world.group;

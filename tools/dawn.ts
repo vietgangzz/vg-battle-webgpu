@@ -28,7 +28,8 @@ export async function setup(W: number, H: number) {
   const device = await adapter!.requestDevice({
     requiredLimits: { maxColorAttachmentBytesPerSample: adapter!.limits.maxColorAttachmentBytesPerSample },
     // the world's textures are ASTC, as on the phone
-    requiredFeatures: [...adapter!.features].filter((f) => f.startsWith("texture-compression")) as GPUFeatureName[],
+    // (TS=1: GPU timestamps too, for measuring what the GPU spends per frame)
+    requiredFeatures: [...adapter!.features].filter((f) => f.startsWith("texture-compression") || (process.env.TS && f === "timestamp-query")) as GPUFeatureName[],
   });
   device.addEventListener("uncapturederror", (e: Event) => console.error("[gpu]", (e as unknown as { error: Error }).error.message));
   const format = gpu.getPreferredCanvasFormat();
@@ -52,6 +53,7 @@ export async function setup(W: number, H: number) {
     context: context as unknown as GPUCanvasContext,
     device,
     antialias: false,
+    trackTimestamp: !!process.env.TS,
   });
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;

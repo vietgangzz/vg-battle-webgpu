@@ -36,6 +36,8 @@ export interface WorldManifest {
   spirits: { x: number; y: number; z: number }[];
   stairs: [[number, number], [number, number]];
   bridge: [[number, number], [number, number]];
+  /** the bridge's deck as built: its ends (x, y, height) and the arch's rise over the straight line between */
+  deck?: { a: [number, number, number]; b: [number, number, number]; rise: number };
   river: [number, number][];
   paths: [number, number][][];
   village: [number, number, number];

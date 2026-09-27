@@ -308,6 +308,8 @@ export class World {
     if (len2 < 1e-6) return 1;
     let t = 1;
     for (const c of this.data.manifest.colliders) {
+      // (the bridge's railing posts keep walkers on the deck; they are too slight to hide anyone)
+      if (c.r < 0.4) continue;
       const r = c.r + pad;
       const fx = from.x - c.x;
       const fy = from.y - c.y;
@@ -321,6 +323,24 @@ export class World {
       if (hit > 0 && hit < t) t = hit;
     }
     return t;
+  }
+
+  /**
+   * The lowest the camera may go at (x, y): the ground, or over the bridge (and a stride either side
+   * of it, out past the railings where the walkable ground is the river) its deck, so the camera
+   * never ducks under the planks.
+   */
+  cameraFloor(x: number, y: number) {
+    const g = this.ground.at(x, y);
+    const d = this.data.manifest.deck;
+    if (!d) return g;
+    const dx = d.b[0] - d.a[0];
+    const dy = d.b[1] - d.a[1];
+    const t = ((x - d.a[0]) * dx + (y - d.a[1]) * dy) / (dx * dx + dy * dy);
+    if (t < 0 || t > 1) return g;
+    const off = Math.abs((x - d.a[0]) * dy - (y - d.a[1]) * dx) / Math.hypot(dx, dy);
+    if (off > 3.5) return g;
+    return Math.max(g, d.a[2] + (d.b[2] - d.a[2]) * t + d.rise * Math.sin(Math.PI * t) + 0.2);
   }
 
   /** Is this point inside something solid (a house, a tower's foot, the hall)? */

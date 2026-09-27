@@ -26,6 +26,8 @@ export class OrbitCamera {
   private shakeT = 0;
   private readonly focus = new THREE.Vector3();
   private placed = false;
+  /** the floor under the lens, eased (see update) */
+  private floorZ = -Infinity;
 
   /** A drag of the thumb: dx, dy in points. */
   look(dx: number, dy: number, now: number) {
@@ -84,9 +86,14 @@ export class OrbitCamera {
       this.clear = want < this.clear ? THREE.MathUtils.damp(this.clear, want, 18, dt) : THREE.MathUtils.damp(this.clear, want, 2.5, dt);
       this.position.lerpVectors(this.focus, this.position, this.clear);
     }
-    // keep clear of the ground
-    const floor = ground(this.position.x, this.position.y) + 0.8;
-    if (this.position.z < floor) this.position.z = floor;
+    // keep clear of the ground: the floor under the lens follows the ground smoothly (up quickly, down
+    // slowly), else swinging round over a riverbank, steps or a slope the picture jumped with every
+    // change of height beneath it; it only stops hard just above the ground itself
+    const g = ground(this.position.x, this.position.y);
+    const floor = g + 0.8;
+    if (!Number.isFinite(this.floorZ)) this.floorZ = floor;
+    this.floorZ = THREE.MathUtils.damp(this.floorZ, floor, floor > this.floorZ ? 10 : 2.5, dt);
+    this.position.z = Math.max(this.position.z, this.floorZ, g + 0.3);
     this.target.copy(this.focus);
 
     this.shakeT += dt;
@@ -108,5 +115,6 @@ export class OrbitCamera {
     this.yaw = Math.atan2(hero.forward.y, hero.forward.x);
     this.pitch = 16 * DEG;
     this.placed = false;
+    this.floorZ = -Infinity;
   }
 }
