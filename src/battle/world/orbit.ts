@@ -41,6 +41,8 @@ export class OrbitCamera {
   private highNow = 0;
   /** 0..1: how far into its fight framing the lens is (eased in and out) */
   private fightNow = 0;
+  /** in a fight, the headings (radians) the lens keeps to as it follows her foe (null: any); a stage whose one open side is known sets it */
+  fightYaw: [number, number] | null = null;
 
   /** A drag of the thumb: dx, dy in points. */
   look(dx: number, dy: number, now: number) {
@@ -84,7 +86,15 @@ export class OrbitCamera {
     if (fighting && now - this.lastLook > 1.2) {
       const dx = foe!.pos.x - hero.pos.x;
       const dy = foe!.pos.y - hero.pos.y;
-      let d = Math.atan2(dy, dx) - this.yaw;
+      let aim = Math.atan2(dy, dx);
+      if (this.fightYaw) {
+        // (kept to the open side: toward the nearer edge of the allowed headings)
+        const [lo, hi] = this.fightYaw;
+        const mid = (lo + hi) / 2;
+        const off = Math.atan2(Math.sin(aim - mid), Math.cos(aim - mid));
+        aim = mid + THREE.MathUtils.clamp(off, lo - mid, hi - mid);
+      }
+      let d = aim - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       const over = Math.sign(d) * Math.max(0, Math.abs(d) - FIGHT_SLACK);
       const sure = THREE.MathUtils.clamp((Math.hypot(dx, dy) - 1.2) / 2, 0, 1);

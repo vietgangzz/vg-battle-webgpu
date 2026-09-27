@@ -54,9 +54,14 @@ const TO_BRIDGE: P[] = [
 const ACROSS: P[] = [
   { x: -22.8, y: -1 },
   { x: -22.5, y: 4 },
-  { x: -22.3, y: 9 },
-  { x: -23.5, y: 14 },
+  { x: -22.6, y: 8.5 },
+  { x: -27, y: 11 },
 ];
+/** where the tiger lord bars her way: up the grass strip along the north bank, west of the bridge; and the dry ground they fight on (the river to the south, the flooded terraces from y 18) */
+const LORD_AT: P = { x: -36, y: 13.5 };
+const ARENA = { x0: -42, x1: -26, y0: 8.5, y1: 16.2 };
+/** the lens looks north-west to north-east over them (it stands over the open river, the terraces behind them): bamboo and reeds crowd the bank either side */
+const ARENA_LENS: [number, number] = [60, 125];
 
 export function runDemo(env: DemoEnv) {
   const { width: W, height: H } = env.window;
@@ -235,7 +240,7 @@ export function runDemo(env: DemoEnv) {
     lordCalled = true;
     route = [];
     arrived = null;
-    env.game()?.demoLordNear(1000);
+    env.game()?.demoLordAt(LORD_AT.x, LORD_AT.y, 1000, ARENA, ARENA_LENS);
   }
 
   /** He is out and fighting (his roar done): she goes in with kiếm khí, the blade, and when he is worn down, the lotus tempest. */
@@ -243,36 +248,45 @@ export function runDemo(env: DemoEnv) {
     const t = now();
     lPress();
     const g = env.game;
-    const near = (m: number) => () => {
-      const lord = g()?.demoLord();
-      const h = g()?.hero.pos;
-      // (not into his wind-up: a player sees it coming)
-      return !!lord && !!h && Math.hypot(lord.pos.x - h.x, lord.pos.y - h.y) < m && now() > dodgeUntil && !lord.attacking;
-    };
-    const far = (m: number) => () => !near(m)();
     tap(t + 0.3, "shoot");
     hold(t + 0.75, t + 2.0, "sprint");
-    for (const k of [2.1, 2.45, 2.8]) tap(t + k, "attack", near(4));
-    tap(t + 3.3, "skill", near(7));
-    for (const k of [3.95, 4.3]) tap(t + k, "attack", near(4));
-    tap(t + 5.2, "shoot", far(4));
-    // up, and a cut on the way down
-    tap(t + 5.8, "jump", near(4));
-    tap(t + 6.05, "attack", near(4.5));
-    for (const k of [6.6, 6.95]) tap(t + k, "attack", near(4));
     // (worn to half, he roars in a rage: sooner than the blows alone would take him there)
     at(t + 7.4, () => {
       const lord = g()?.demoLord();
       if (lord && lord.hp > lord.maxHp * 0.5) g()?.demoWear(lord.maxHp * 0.49);
     });
-    tap(t + 8.4, "skill", near(7));
-    for (const k of [9.0, 9.35, 9.7]) tap(t + k, "attack", near(4));
-    tap(t + 10.4, "shoot", far(4));
-    tap(t + 11.0, "jump", near(4));
-    tap(t + 11.25, "attack", near(4.5));
-    for (const k of [11.8, 12.15, 12.5]) tap(t + k, "attack", near(4));
+    // the right thumb never rests: every third of a second it does what a player would there and then:
+    // up close the blade (a sword streak when it is ready, now and then a jump and a cut on the way
+    // down), from afar kiếm khí as she runs in; it holds only for his wind-up (the dash or the guard)
+    let lastSkill = -10;
+    let lastJump = 1;
+    let lastShot = 0.3;
+    const beat = () => {
+      const k = now() - t;
+      if (k > 13.3) return;
+      at(now() + 0.33, beat);
+      const lord = g()?.demoLord();
+      const h = g()?.hero.pos;
+      if (!lord || !h || now() < dodgeUntil || lord.attacking) return;
+      const d = Math.hypot(lord.pos.x - h.x, lord.pos.y - h.y);
+      if (d > 5.5) {
+        if (k - lastShot > 1.4) {
+          lastShot = k;
+          tap(now() + 0.14, "shoot");
+        }
+        return;
+      }
+      if (k - lastSkill > 5.2) {
+        lastSkill = k;
+        tap(now() + 0.14, "skill");
+      } else if (k - lastJump > 4 && d < 4) {
+        lastJump = k;
+        tap(now() + 0.14, "jump");
+        tap(now() + 0.4, "attack");
+      } else if (d < 4.2) tap(now() + 0.14, "attack");
+    };
+    at(t + 1.9, beat);
     at(t + 13.4, () => g()?.charge(2));
-    tap(t + 13.45, "skill", near(7));
     // the lotus tempest (pressed again while she is still reeling from a blow and it will not go)
     const ult = (k: number, tries: number) => {
       tap(k, "ult");

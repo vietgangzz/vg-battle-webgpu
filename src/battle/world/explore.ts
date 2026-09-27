@@ -1485,28 +1485,22 @@ export class Explore {
   }
 
   /**
-   * The demo's tiger lord comes to SORA where she is (off the bridge): he
-   * steps out `far` metres ahead of the lens, on dry open ground, facing her,
-   * and roars; his health is `hp`, so the fight fits the reel.
+   * The demo's tiger lord bars SORA's way (off the bridge): he steps out at
+   * (x, y), facing her, and roars; his health is `hp`, so the fight fits the
+   * reel. `arena` holds them both on dry open ground for the fight (the north
+   * bank there is a strip between the river and the flooded rice terraces).
    */
-  demoLordNear(hp: number, far = 9) {
+  demoLordAt(x: number, y: number, hp: number, arena: { x0: number; x1: number; y0: number; y1: number }, lens?: [number, number]) {
     const h = this.hero.pos;
-    const ahead = this.camera.heading();
-    const clear = (x: number, y: number) => {
-      const z = this.world.ground.at(x, y);
-      return z >= 0.25 && !this.world.solidAt(V.set(x, y, z));
-    };
-    // straight ahead if it is clear, else the nearest clear bearing either side (the river is close by)
-    let x = h.x + Math.cos(ahead) * far;
-    let y = h.y + Math.sin(ahead) * far;
-    for (let k = 1; k <= 12 && !clear(x, y); k++) {
-      const a = ahead + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.35;
-      x = h.x + Math.cos(a) * far;
-      y = h.y + Math.sin(a) * far;
-    }
     this.demoLordHp = hp;
+    this.demoArena = arena;
+    // (and the lens kept to the open side of it, in degrees)
+    this.camera.fightYaw = lens ? [(lens[0] * Math.PI) / 180, (lens[1] * Math.PI) / 180] : null;
     this.wakeBoss({ x, y, yaw: (Math.atan2(h.y - y, h.x - x) * 180) / Math.PI });
   }
+
+  /** the demo's duel stays on this dry ground (null: anywhere) */
+  private demoArena: { x0: number; x1: number; y0: number; y1: number } | null = null;
 
   /** The tiger lord, for the demo's thumbs: where he is, and whether a blow of his is on its way (null unless he is fighting). */
   demoLord(): { pos: THREE.Vector3; attacking: boolean; blowIn: number; hp: number; maxHp: number } | null {
@@ -1578,6 +1572,16 @@ export class Explore {
 
   private autoBrawl(dt: number) {
     if (this.demo) this.hero.hp = Math.max(this.hero.hp, this.hero.maxHp * 0.5);
+    // the demo's duel: neither steps (nor is thrown, nor springs, nor charges) off the dry ground
+    const arena = this.demoArena;
+    if (arena) {
+      const keep = (p: THREE.Vector3) => {
+        p.x = THREE.MathUtils.clamp(p.x, arena.x0, arena.x1);
+        p.y = THREE.MathUtils.clamp(p.y, arena.y0, arena.y1);
+      };
+      keep(this.hero.pos);
+      if (this.tiger?.alive) keep(this.tiger.pos);
+    }
     if (this.duel && this.phase === "boss") {
       this.autopilot(dt);
       return;
