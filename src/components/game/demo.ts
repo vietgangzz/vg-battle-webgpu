@@ -1,11 +1,13 @@
 /**
- * The showcase demo (?demo=1): about forty seconds of play for a screen
- * recording, driven by two programmed thumbs. The left one works the stick
- * (steering SORA down the towpath and over the bridge, turned to the camera's
- * heading as a player's thumb would be), the right one holds sprint, drags the
- * camera round and taps the attacks, the Heaven Pierce and the lotus tempest.
- * The touches go through the controls themselves (see Synth) and are drawn as
- * fingertips (see Fingers), so the picture is what a hand playing it shows.
+ * The showcase demo (?demo=1): about a minute of play for a screen recording
+ * (cut down to a reel), driven by two programmed thumbs. The left one works
+ * the stick (steering SORA down the towpath, over the bridge and up to the
+ * pagoda, turned to the camera's heading as a player's thumb would be), the
+ * right one holds sprint, turns the camera and taps the attacks, the Heaven
+ * Pierce and, against the tiger lord, the lotus tempest; when he swings, it
+ * dashes her out of the way. The touches go through the controls themselves
+ * (see Synth) and are drawn as fingertips (see Fingers), so the picture is
+ * what a hand playing it shows.
  */
 import type { Explore } from "@/battle/world/explore";
 
@@ -48,6 +50,8 @@ const TO_BRIDGE: P[] = [
 ];
 /** the thủy đình, out in the river east of the bridge: the last shot looks across to it */
 const THUY_DINH: P = { x: 12, y: -7.5 };
+/** the foot of the pagoda's stairs: the reel cuts to her here, running up them to the tiger lord's courtyard (the lens behind her over the open steps) */
+const PAGODA_STAIRS: P = { x: 48, y: 62 };
 /** on over the top and down the far side */
 const ACROSS: P[] = [
   { x: -22.8, y: -1 },
@@ -75,6 +79,14 @@ export function runDemo(env: DemoEnv) {
   /** the left thumb wants the stick (it goes down as soon as the controls are there to take it) */
   let lWant = false;
   let chase = false;
+  /** at the pagoda: the left thumb walks her up to `pagoda` until the tiger lord is out, then takes her to him */
+  let pagoda: P | null = null;
+  let lordOut = false;
+  // a dash out of the way of his swing: which side, which way (on the ground), until when, and when the next may go
+  let dodgeSide = 1;
+  let dodgeDir: P = { x: 0, y: 0 };
+  let dodgeUntil = 0;
+  let dodgeReady = 0;
   let knob: P = { x: 0, y: 0 };
   // what the right thumb does while SORA runs: sprint in bursts (her stamina lasts about five seconds), a drag of the camera between
   let runT = -1;
@@ -97,18 +109,23 @@ export function runDemo(env: DemoEnv) {
     rDragging = drag;
   };
   const rShow = (on: boolean) => env.fingers.current?.show(R, on);
-  /** the right thumb taps a button: over to it, press, lift */
-  const tap = (t: number, id: ButtonId) => {
+  /** the right thumb taps a button: over to it, press, lift (only if `when` still holds as it sets off) */
+  const tap = (t: number, id: ButtonId, when?: () => boolean) => {
+    let go = true;
     at(t - 0.14, () => {
+      go = !when || when();
+      if (!go) return;
       rShow(true);
       glide(button(id), 0.12);
     });
     at(t, () => {
+      if (!go) return;
       const p = button(id);
+      env.synth.current?.up("R");
       env.synth.current?.down("R", p.x, p.y);
       env.fingers.current?.press(R);
     });
-    at(t + 0.1, () => env.synth.current?.up("R"));
+    at(t + 0.1, () => go && env.synth.current?.up("R"));
   };
   /** the right thumb holds a button from t to t2 */
   const hold = (t: number, t2: number, id: ButtonId) => {
@@ -202,15 +219,12 @@ export function runDemo(env: DemoEnv) {
     tap(t + 3.7, "shoot");
     at(t + 4.1, () => env.game()?.charge(1));
     tap(t + 4.7, "ult");
-    for (const k of [7.4, 7.75, 8.1]) tap(t + k, "attack");
-    at(t + 8.4, () => env.game()?.charge(2));
-    tap(t + 9.4, "ult");
-    at(t + 14.2, () => {
+    at(t + 7.6, () => {
       chase = false;
       lLift();
       env.game()?.demoCalm();
     });
-    at(t + 14.6, () => {
+    at(t + 8.0, () => {
       runT = now();
       runBeat = 0;
       go(TO_BRIDGE, outro);
@@ -226,14 +240,60 @@ export function runDemo(env: DemoEnv) {
     // her and the river at the thủy đình (the lens is raised on the bridge)
     route = [...ACROSS];
     arrived = lLift;
-    aim(t + 0.6, 5.5, THUY_DINH, 0.18);
-    at(t + 6.2, () => {
-      rShow(false);
+    aim(t + 0.6, 4.4, THUY_DINH, 0.18);
+    at(t + 5.4, () => rShow(false));
+    at(t + 5.8, toPagoda);
+  }
+
+  // ---------------------------------------------------------------- the pagoda: the tiger lord (the reel cuts to here)
+  function toPagoda() {
+    lLift();
+    env.synth.current?.up("R");
+    const g = env.game();
+    if (!g) return;
+    pagoda = g.demoToPagoda(PAGODA_STAIRS.x, PAGODA_STAIRS.y, 1000);
+    route = [];
+    arrived = null;
+    at(now() + 0.35, lPress);
+  }
+
+  /** He is out and fighting (his roar done): she goes in with kiếm khí, the blade, and when he is worn down, the lotus tempest. */
+  function lordFight() {
+    const t = now();
+    const g = env.game;
+    const near = (m: number) => () => {
+      const lord = g()?.demoLord();
+      const h = g()?.hero.pos;
+      return !!lord && !!h && Math.hypot(lord.pos.x - h.x, lord.pos.y - h.y) < m;
+    };
+    const far = (m: number) => () => !near(m)();
+    tap(t + 0.3, "shoot");
+    hold(t + 0.75, t + 2.0, "sprint");
+    for (const k of [2.1, 2.45, 2.8, 3.6, 3.95, 4.3]) tap(t + k, "attack", near(4));
+    // (worn to half, he roars in a rage: sooner than the blows alone would take him there)
+    at(t + 4.6, () => {
+      const lord = g()?.demoLord();
+      if (lord && lord.hp > lord.maxHp * 0.5) g()?.demoWear(lord.maxHp * 0.49);
     });
-    at(t + 6.8, () => {
-      stop();
-      env.done?.();
-    });
+    tap(t + 5.2, "shoot", far(4));
+    for (const k of [5.9, 6.25, 6.6, 7.3, 7.65, 8.0]) tap(t + k, "attack", near(4));
+    at(t + 8.4, () => g()?.charge(2));
+    // the lotus tempest (pressed again while she is still reeling from a blow and it will not go)
+    const ult = (k: number, tries: number) => {
+      tap(k, "ult");
+      at(k + 0.4, () => {
+        if (tries > 1 && g()?.demoCharged()) ult(now() + 0.05, tries - 1);
+        else {
+          rShow(false);
+          at(now() + 3.4, () => {
+            lLift();
+            stop();
+            env.done?.();
+          });
+        }
+      });
+    };
+    ult(t + 9.0, 8);
   }
 
   /** while running: sprint for four seconds, let the stamina come back, sprint again (the camera left to follow her, as a player leaves it) */
@@ -275,7 +335,34 @@ export function runDemo(env: DemoEnv) {
       let want = { x: 0, y: 0 };
       const hero = g.hero.pos;
       let goal: P | null = null;
-      if (chase) {
+      let ease = 0.1;
+      const lord = pagoda ? g.demoLord() : null;
+      if (lord && !lordOut) {
+        lordOut = true;
+        lordFight();
+      }
+      if (lord) {
+        const dx = hero.x - lord.pos.x;
+        const dy = hero.y - lord.pos.y;
+        const d = Math.hypot(dx, dy) || 1;
+        // he swings: off to one side and a little back, out of the blow's arc, with a dash
+        if (lord.attacking && d < 5.5 && t >= dodgeReady) {
+          dodgeSide = -dodgeSide;
+          const ax = dx / d;
+          const ay = dy / d;
+          dodgeDir = { x: ax * 0.45 - ay * 0.9 * dodgeSide, y: ay * 0.45 + ax * 0.9 * dodgeSide };
+          dodgeUntil = t + 0.45;
+          dodgeReady = t + 1.3;
+          tap(t + 0.12, "dash");
+        }
+        if (t < dodgeUntil) {
+          goal = { x: hero.x + dodgeDir.x * 4, y: hero.y + dodgeDir.y * 4 };
+          ease = 0.4;
+        } else if (d > 2.9) goal = lord.pos;
+      } else if (pagoda) {
+        // up the approach until he steps out (then she stops for his roar)
+        if (!lordOut && Math.hypot(pagoda.x - hero.x, pagoda.y - hero.y) > 17.3) goal = pagoda;
+      } else if (chase) {
         const foe = g.hero.target;
         if (foe && Math.hypot(foe.pos.x - hero.x, foe.pos.y - hero.y) > 2.6) goal = foe.pos;
       } else {
@@ -301,8 +388,8 @@ export function runDemo(env: DemoEnv) {
         const sy = fx * wx + fy * wy;
         want = { x: sx * 50, y: -sy * 50 };
       }
-      // a thumb eases toward where it wants to be (unhurried: she turns in curves, not snaps)
-      knob = { x: knob.x + (want.x - knob.x) * 0.1, y: knob.y + (want.y - knob.y) * 0.1 };
+      // a thumb eases toward where it wants to be (unhurried: she turns in curves, not snaps; a dodge is quick)
+      knob = { x: knob.x + (want.x - knob.x) * ease, y: knob.y + (want.y - knob.y) * ease };
       if (lDown) {
         const px = l.home.x + knob.x;
         const py = l.home.y + knob.y;

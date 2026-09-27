@@ -593,7 +593,11 @@ export class Explore {
     if (control && dt > 0) {
       const move = this.combat.control(hero, this.guard, hero.target);
       if (move === "ult") this.say("HEAVEN PIERCE", "");
-      else if (move === "ult2") this.say("LOTUS TEMPEST", "SEN BÃO");
+      else if (move === "ult2") {
+        this.say("LOTUS TEMPEST", "SEN BÃO");
+        // (the demo's tempest is the blow that fells the tiger lord)
+        if (this.demo) this.demoWear(18);
+      }
     }
     for (const f of this.foes) if (f.active) f.actor.target = hero;
     this.boss.target = hero;
@@ -785,6 +789,7 @@ export class Explore {
     if (tiger) {
       // Ông Ba Mươi steps out into his courtyard and roars
       tiger.place(b.at[0], b.at[1], this.world.ground.at(b.at[0], b.at[1]), 6, b.yaw ?? 0);
+      if (this.demoLordHp > 0) tiger.maxHp = tiger.hp = this.demoLordHp;
       tiger.wake(this.time);
       this.fx.fire("dashKage", this.time, V.set(tiger.pos.x, tiger.pos.y, tiger.groundZ), tiger.yaw, 0.05);
       this.say("TIGER LORD", "ÔNG BA MƯƠI · LORD OF THE PAGODA");
@@ -1448,9 +1453,46 @@ export class Explore {
   private brawlT = 0;
 
   // ---------------------------------------------------------------- the showcase demo (?demo=1)
+  /** the showcase demo is running: SORA does not fall (a scripted run has to reach its end) */
+  private demo = false;
+  /** the tiger lord's health in the demo (0: the valley's own) */
+  private demoLordHp = 0;
+
   /** The showcase demo sets out from where the valley starts; no camp springs an ambush on the way. */
   demoSetup() {
+    this.demo = true;
     for (const c of this.camps) c.state = "cleared";
+  }
+
+  /**
+   * The demo's cut to the pagoda: SORA set down at (x, y) on the way up to
+   * the tiger lord's courtyard, facing it (the camera behind her), so that
+   * she walks up into it and he steps out; his health is `hp`, so the fight
+   * fits the reel.
+   */
+  demoToPagoda(x: number, y: number, hp: number) {
+    const b = this.world.data.manifest.markers.find((k) => k.type === "boss")!;
+    this.hero.place(V.set(x, y, 0), (Math.atan2(b.at[1] - y, b.at[0] - x) * 180) / Math.PI);
+    this.camera.reset(this.hero);
+    this.demoLordHp = hp;
+    return { x: b.at[0], y: b.at[1] };
+  }
+
+  /** The tiger lord, for the demo's thumbs: where he is, and whether a blow of his is on its way (null unless he is fighting). */
+  demoLord(): { pos: THREE.Vector3; attacking: boolean; hp: number; maxHp: number } | null {
+    const t = this.tiger;
+    return t && this.phase === "boss" && t.alive ? { pos: t.pos, attacking: t.attacking, hp: t.hp, maxHp: t.maxHp } : null;
+  }
+
+  /** Whether the ultimate is still charged (the demo's thumb presses it again until it goes). */
+  demoCharged() {
+    return this.combat.energy >= ENERGY_MAX;
+  }
+
+  /** The tiger lord worn down to `hp` (no further): at half, he rages; the demo's lotus tempest fells him. */
+  demoWear(hp: number) {
+    const t = this.tiger;
+    if (t?.alive) t.hp = Math.max(1, Math.min(t.hp, hp));
   }
 
   /** The ultimate charged once (the Heaven Pierce) or twice (the lotus tempest). */
@@ -1499,6 +1541,7 @@ export class Explore {
   private brawlAuto = true;
 
   private autoBrawl(dt: number) {
+    if (this.demo) this.hero.hp = Math.max(this.hero.hp, this.hero.maxHp * 0.5);
     if (this.duel && this.phase === "boss") {
       this.autopilot(dt);
       return;

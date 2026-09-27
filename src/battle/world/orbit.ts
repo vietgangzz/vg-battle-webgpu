@@ -11,6 +11,8 @@ const DEG = Math.PI / 180;
 
 /** raised (see OrbitCamera.high), the lens looks down on her at least this steeply */
 const HIGH_PITCH = 33 * DEG;
+/** in a fight the lens stands back and looks down on the field at least this steeply: the whole scrap in view, not her back */
+const FIGHT_PITCH = 25 * DEG;
 
 export class OrbitCamera {
   readonly position = new THREE.Vector3();
@@ -34,6 +36,8 @@ export class OrbitCamera {
   /** 0..1: how far the lens is raised to look down on her (on the bridge: from its own height the railings hid her) */
   high = 0;
   private highNow = 0;
+  /** 0..1: how far into its fight framing the lens is (eased in and out) */
+  private fightNow = 0;
 
   /** A drag of the thumb: dx, dy in points. */
   look(dx: number, dy: number, now: number) {
@@ -58,11 +62,14 @@ export class OrbitCamera {
     // the point we look at: SORA, or between her and whoever she is fighting
     const want = new THREE.Vector3(hero.pos.x, hero.pos.y, hero.pos.z + 1.35);
     let wantDist = 8.6 + 1.6 * this.sprint;
-    if (foe && !foe.dead) {
+    const fighting = !!foe && !foe.dead;
+    if (fighting) {
       const mid = new THREE.Vector3().lerpVectors(hero.pos, foe.pos, 0.35);
       want.set(mid.x, mid.y, want.z);
-      wantDist = THREE.MathUtils.clamp(6.5 + hero.pos.distanceTo(foe.pos) * 0.5, 7.5, 12) * (0.8 + 0.2 * foe.scale);
+      // stood well back: her, the foes round her and the reach of her skills all in the picture (a big foe, further)
+      wantDist = THREE.MathUtils.clamp(9.5 + hero.pos.distanceTo(foe.pos) * 0.5, 10.5, 15) * (0.85 + 0.15 * foe.scale);
     }
+    this.fightNow = THREE.MathUtils.damp(this.fightNow, fighting ? 1 : 0, 1.6, dt);
     if (!this.placed) {
       this.focus.copy(want);
       this.placed = true;
@@ -80,7 +87,8 @@ export class OrbitCamera {
     }
 
     this.highNow = THREE.MathUtils.damp(this.highNow, this.high, 2.2, dt);
-    const pitch = this.pitch + this.highNow * Math.max(0, HIGH_PITCH - this.pitch);
+    const lift = Math.max(this.highNow * Math.max(0, HIGH_PITCH - this.pitch), this.fightNow * Math.max(0, FIGHT_PITCH - this.pitch));
+    const pitch = this.pitch + lift;
     const cp = Math.cos(pitch);
     this.position.set(
       this.focus.x - Math.cos(this.yaw) * cp * this.dist,
