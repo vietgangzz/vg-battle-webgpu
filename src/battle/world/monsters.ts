@@ -52,6 +52,10 @@ interface Spec {
   combo?: number;
   /** a charge from afar: it crouches for `windup` s, then drives through where she stood at `speed`, bowling her over */
   charge?: { min: number; max: number; every: number; windup: number; speed: number; hit: HitSpec };
+  /** it reads her blows: at `chance` of one she starts close by, it springs `dist` m aside in `secs` (untouchable), and strikes straight back */
+  evade?: { chance: number; every: number; dist: number; secs: number };
+  /** waiting for its turn close by, it circles her instead of standing */
+  strafe?: boolean;
 }
 
 /** The tiger lord's roar: a blast of air that throws SORA back if she stands close. */
@@ -106,8 +110,10 @@ const SPECS: Record<MonsterKind, Spec> = {
       { clip: "attack", speed: 1.45, hit: { range: 3.4, arc: 80, damage: 12, kind: "heavy", clip: "diagonalHit" } },
       { clip: "slam", speed: 1.3, hit: { range: 4.6, arc: 180, damage: 16, kind: "heavy", clip: "waveHit" }, quake: 7 },
     ],
-    cooldown: [1.1, 2.1],
+    cooldown: [0.7, 1.4],
     combo: 2,
+    evade: { chance: 0.5, every: 1.4, dist: 3.4, secs: 0.3 },
+    strafe: true,
     charge: { min: 5.5, max: 16, every: 5, windup: 0.5, speed: 15, hit: { range: 99, arc: 180, damage: 14, kind: "heavy", clip: "waveHit" } },
     xp: 400,
     stun: 0.9,
@@ -176,7 +182,7 @@ const V = new THREE.Vector3();
 const V2 = new THREE.Vector3();
 let ids = 1000;
 
-type State = "idle" | "wander" | "chase" | "attack" | "cast" | "charge" | "stun" | "roar" | "dying" | "gone";
+type State = "idle" | "wander" | "chase" | "attack" | "cast" | "charge" | "evade" | "stun" | "roar" | "dying" | "gone";
 
 /** A red "!" that pops over a monster's head the moment it notices SORA. */
 function alertMaterial() {
@@ -234,8 +240,17 @@ export class Monster {
   private nextCharge = 0;
   /** blows left to throw straight on in this combo */
   private chainLeft = 0;
-  /** the charge: where it drives through to */
+  /** the charge: where it drives through to, and when it last left a mark on its way */
   private readonly chargeTo = new THREE.Vector2();
+  private trailT = 0;
+  /** the evade: which way it springs, when it may again, and the move of hers it last read */
+  private readonly evadeDir = new THREE.Vector2();
+  private nextEvade = 0;
+  private seenMove: unknown = null;
+  /** circling her: which way round, and for how long yet */
+  private strafeSide = 1;
+  private strafeT = 0;
+  private strafing = false;
   private blow: Spec["attacks"][number] | null = null;
   private landed = false;
   private push = new THREE.Vector2();
@@ -297,7 +312,7 @@ export class Monster {
     return forwardOf(this.yaw);
   }
   get busy() {
-    return this.state === "attack" || this.state === "cast" || this.state === "charge" || this.state === "stun" || this.state === "roar";
+    return this.state === "attack" || this.state === "cast" || this.state === "charge" || this.state === "evade" || this.state === "stun" || this.state === "roar";
   }
   get airborne() {
     return false;
@@ -306,7 +321,8 @@ export class Monster {
     return !this.dead && !this.down && this.hp > 0;
   }
   get invulnerable() {
-    return this.state === "gone";
+    // (springing aside, it is not there to be hit)
+    return this.state === "gone" || this.state === "evade";
   }
   get attacking() {
     return this.state === "attack" && !this.landed;
@@ -464,6 +480,7 @@ export class Monster {
     const toHero = V.subVectors(hero.pos, this.pos).setZ(0);
     const dist = toHero.length();
     let move = 0;
+    this.strafing = false;
 
     switch (this.state) {
       case "idle":
@@ -501,6 +518,30 @@ export class Monster {
           break;
         }
         this.turnTo(toHero, dt, 7);
+        // it reads her blow as she starts it, and springs aside (never from the ultimate: that is the end)
+        const ev = s.evade;
+        const her = hero.action;
+        if (ev && her && her !== this.seenMove) {
+          this.seenMove = her;
+          const name = her.def.name;
+          if (
+            name !== "pierce" && name !== "tempest" && her.def.impact !== undefined && her.t < her.def.impact &&
+            dist < 4.5 && time > this.nextEvade && this.rand() < ev.chance * (this.raged ? 1.3 : 1)
+          ) {
+            this.nextEvade = time + ev.every;
+            const side = this.rand() < 0.5 ? -1 : 1;
+            const ax = -toHero.x / (dist || 1);
+            const ay = -toHero.y / (dist || 1);
+            // aside, and a little back
+            this.evadeDir.set(ax * 0.45 - ay * 0.9 * side, ay * 0.45 + ax * 0.9 * side).normalize();
+            this.state = "evade";
+            this.t = 0;
+            this.body.play(s.runClip, { fade: 0.05, speed: 2.8 });
+            ctx.afterimage?.(V2.set(this.pos.x, this.pos.y, this.groundZ), this.yaw);
+            ctx.flare?.(V2.set(this.pos.x, this.pos.y, this.groundZ + 1.2), 2.4);
+            break;
+          }
+        }
         if (s.boss && !this.raged && this.hp < this.maxHp * 0.5) {
           this.raged = true;
           this.roar();
@@ -517,6 +558,9 @@ export class Monster {
           V2.copy(toHero).normalize();
           this.chargeTo.set(hero.pos.x + V2.x * 3, hero.pos.y + V2.y * 3);
           this.body.play("roar", { loop: false, fade: 0.1, speed: 2.2 });
+          // where it will come through: a red mark on the ground under her
+          ctx.warn?.(V2.set(hero.pos.x, hero.pos.y, hero.groundZ), 3.2);
+          this.trailT = 0;
           break;
         }
         const cast = s.cast;
@@ -530,11 +574,19 @@ export class Monster {
         }
         if (dist < s.reach && time > this.nextAttack && hero.hp > 0 && ctx.tokens.take(this.id)) {
           this.chainLeft = s.combo && this.rand() < (this.raged ? 0.85 : 0.6) ? s.combo - (this.raged ? 0 : 1) : 0;
-          this.blow = s.attacks[Math.floor(this.rand() * s.attacks.length)];
-          this.state = "attack";
-          this.t = 0;
-          this.landed = false;
-          this.body.play(this.blow.clip, { loop: false, fade: 0.08, speed: this.blow.speed * this.fury });
+          this.strike(s.attacks[Math.floor(this.rand() * s.attacks.length)], ctx);
+          break;
+        }
+        // close by, waiting for its turn: it circles her, stalking, now one way, now the other
+        this.strafing = !!s.strafe && time <= this.nextAttack && dist < s.reach + 2.5 && dist > s.radius + 0.8;
+        if (this.strafing) {
+          this.strafeT -= dt;
+          if (this.strafeT <= 0) {
+            this.strafeSide = this.rand() < 0.5 ? -1 : 1;
+            this.strafeT = 0.8 + this.rand() * 1.2;
+          }
+          move = s.walk * 1.3 * this.fury;
+          this.anim("walk", 1.3);
           break;
         }
         // close in; hover just outside reach while waiting a turn
@@ -552,18 +604,36 @@ export class Monster {
           const facing = this.forward.dot(V2.copy(toHero).normalize()) > Math.cos((blow.hit.arc * Math.PI) / 180);
           if (dist < blow.hit.range && facing) ctx.combat.blast(this as unknown as Actor, hero, blow.hit);
           ctx.shake(this.spec.heavy ? (s.boss ? 0.2 : 0.12) : 0.03);
+          // a boss's blow lands in a red burst where it strikes
+          if (s.boss) {
+            const reach = blow.hit.arc >= 150 ? 0 : Math.min(dist, blow.hit.range) * 0.8;
+            const f = this.forward;
+            ctx.flare?.(V2.set(this.pos.x + f.x * reach, this.pos.y + f.y * reach, this.groundZ + 1.1), blow.hit.arc >= 150 ? 5 : 3);
+          }
           if (blow.quake) ctx.quake?.(V2.set(this.pos.x, this.pos.y, this.groundZ), blow.quake);
         }
         // a combo: the next blow follows at once, while she is still in reach
         if (this.chainLeft > 0 && this.t > impact + 0.28 && dist < s.reach + 1.5 && hero.hp > 0) {
           this.chainLeft--;
-          this.blow = s.attacks[(s.attacks.indexOf(blow) + 1) % s.attacks.length];
-          this.t = 0;
-          this.landed = false;
-          this.body.play(this.blow.clip, { loop: false, fade: 0.06, speed: this.blow.speed * this.fury * 1.1 });
+          this.strike(s.attacks[(s.attacks.indexOf(blow) + 1) % s.attacks.length], ctx, 1.1);
           break;
         }
         if (this.t > impact + (this.spec.heavy ? 0.7 : 0.45)) this.endAttack(time);
+        break;
+      }
+      case "evade": {
+        const ev = s.evade!;
+        const step = (ev.dist / ev.secs) * dt;
+        this.pos.x += this.evadeDir.x * step;
+        this.pos.y += this.evadeDir.y * step;
+        this.turnTo(toHero, dt, 10);
+        if (this.t >= ev.secs) {
+          // and straight back at her: the counter (a combo of its own once it rages)
+          ctx.afterimage?.(V2.set(this.pos.x, this.pos.y, this.groundZ), this.yaw);
+          ctx.tokens.take(this.id);
+          this.chainLeft = this.raged ? 2 : 1;
+          this.strike(s.attacks[0], ctx, 1.2);
+        }
         break;
       }
       case "charge": {
@@ -576,6 +646,13 @@ export class Monster {
         if (this.t - dt < charge.windup) {
           this.body.play(s.runClip, { fade: 0.08, speed: 2.2 });
           ctx.quake?.(V2.set(this.pos.x, this.pos.y, this.groundZ), 3);
+        }
+        // a trail of red on the ground and afterimages behind it
+        this.trailT -= dt;
+        if (this.trailT <= 0) {
+          this.trailT = 0.09;
+          ctx.warn?.(V2.set(this.pos.x, this.pos.y, this.groundZ), 1.8);
+          ctx.afterimage?.(V2.set(this.pos.x, this.pos.y, this.groundZ), this.yaw);
         }
         const to = V.set(this.chargeTo.x - this.pos.x, this.chargeTo.y - this.pos.y, 0);
         const left = to.length();
@@ -590,6 +667,7 @@ export class Monster {
           this.landed = true;
           ctx.combat.blast(this as unknown as Actor, hero, charge.hit);
           ctx.shake(0.25);
+          ctx.flare?.(V2.set(hero.pos.x, hero.pos.y, hero.groundZ + 1), 4);
           ctx.quake?.(V2.set(hero.pos.x, hero.pos.y, this.groundZ), 5);
         }
         if (left < 0.3 || this.t > charge.windup + 1.1) {
@@ -636,7 +714,7 @@ export class Monster {
     const y0 = this.pos.y;
     if (move > 0) {
       // walking round something in the way: it heads off to one side for a moment
-      const f = this.detourT > 0 ? forwardOf(this.yaw + this.detourSide * 70, V2) : this.forward;
+      const f = this.detourT > 0 ? forwardOf(this.yaw + this.detourSide * 70, V2) : this.strafing ? forwardOf(this.yaw + this.strafeSide * 90, V2) : this.forward;
       this.detourT -= dt;
       this.pos.x += f.x * move * dt;
       this.pos.y += f.y * move * dt;
@@ -654,7 +732,27 @@ export class Monster {
     }
     this.groundZ = ctx.ground(this.pos.x, this.pos.y);
     this.pos.z = this.groundZ;
+    // a boss burns red as it winds up, charges, springs or roars, and smoulders once it rages
+    if (s.boss) {
+      const hot = this.state === "charge" || this.state === "roar" || this.state === "evade" || (this.state === "attack" && !this.landed);
+      this.body.ember = hot ? 1 : this.raged ? 0.45 : 0.1;
+    }
     this.sync();
+  }
+
+  /** Throw `blow` (a boss marks where it will land with red, first, and burns red as it winds up). */
+  private strike(blow: Spec["attacks"][number], ctx: MonsterContext, quick = 1) {
+    this.blow = blow;
+    this.state = "attack";
+    this.t = 0;
+    this.landed = false;
+    this.body.play(blow.clip, { loop: false, fade: 0.06, speed: blow.speed * this.fury * quick });
+    if (this.spec.boss) {
+      const wide = blow.hit.arc >= 150;
+      const f = this.forward;
+      const at = wide ? 0 : blow.hit.range * 0.55;
+      ctx.warn?.(V2.set(this.pos.x + f.x * at, this.pos.y + f.y * at, this.groundZ), wide ? blow.hit.range : blow.hit.range * 0.75);
+    }
   }
 
   private endAttack(time: number) {
@@ -698,6 +796,12 @@ export interface MonsterContext {
   collide(m: Monster): void;
   /** a slam or a roar: a ring over the ground at `at`, `size` metres out */
   quake?(at: THREE.Vector3, size: number): void;
+  /** a boss's blow coming: a red ring over the ground where it will land */
+  warn?(at: THREE.Vector3, size: number): void;
+  /** a red burst (a boss's blow landing, a spring aside) */
+  flare?(at: THREE.Vector3, size: number): void;
+  /** an afterimage where it sprang from (`yaw` in degrees) */
+  afterimage?(at: THREE.Vector3, yaw: number): void;
 }
 
 // ---------------------------------------------------------------- the river demon's orbs

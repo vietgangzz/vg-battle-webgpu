@@ -148,6 +148,8 @@ interface Pack {
 }
 /** the tiger lord's slams and roars ring the ground in amber */
 const QUAKE: [number, number, number] = [1.6, 0.75, 0.2];
+/** the tiger lord's warnings, trails and blows: blood red */
+const WRATH: [number, number, number] = [1.5, 0.02, 0.05];
 /** how many of each monster the valley can have out at once (the tiger lord's soldiers serve the packs and the camps) */
 const HERD: Partial<Record<MonsterKind, number>> = { goblin: 8, gremlin: 8, dwarf: 3, river_demon: 5, golem: 3, tiger: 1 };
 /** who answers a camp's call for a shadow (goblins and gremlins, turn about) or a brute */
@@ -1368,6 +1370,12 @@ export class Explore {
       this.bolts.groundRing(at, size, false, QUAKE);
       this.events.sound?.("slam");
     },
+    // a boss's blow coming: a red ring over the ground where it will land (silent)
+    warn: (at: THREE.Vector3, size: number) => this.bolts.groundRing(at, size, false, WRATH, true),
+    // a boss's blow landing, a step or a charge setting off: a red burst
+    flare: (at: THREE.Vector3, size: number) => this.bolts.ring(at, size, false, WRATH),
+    // an afterimage left where it sprang from
+    afterimage: (at: THREE.Vector3, yaw: number) => this.fx.fire("dashKage", this.time, at, yaw, 0.05),
   };
 
   private updatePacks(dt: number) {

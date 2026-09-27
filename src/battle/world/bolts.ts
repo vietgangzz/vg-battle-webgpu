@@ -74,7 +74,8 @@ function softMaterial(color: [number, number, number], strength: number, ring = 
 }
 
 /** A ring of light lying flat on the ground (the level-up's and the tempest's shockwave). */
-function groundRingMaterial() {
+/** `painted`: laid over the ground in its own colour (a red that stays red on green grass), not added as light */
+function groundRingMaterial(painted = false) {
   const m = new THREE.MeshBasicNodeMaterial();
   const fade = TSL.uniform(0).setGroup(TSL.renderGroup);
   const tint = TSL.uniform(new THREE.Color(...LIME)).setGroup(TSL.renderGroup);
@@ -82,10 +83,10 @@ function groundRingMaterial() {
   // a bright rim with a soft glow trailing inside it
   const rim = TSL.smoothstep(0.78, 0.93, r).mul(TSL.smoothstep(1.0, 0.94, r));
   const inner = TSL.smoothstep(0.2, 0.9, r).mul(TSL.smoothstep(1.0, 0.9, r)).mul(0.35);
-  m.colorNode = TSL.vec4(tint.mul(3.4), rim.add(inner).mul(fade));
+  m.colorNode = painted ? TSL.vec4(tint.mul(1.25), rim.add(inner.mul(1.6)).mul(fade).mul(0.9)) : TSL.vec4(tint.mul(3.4), rim.add(inner).mul(fade));
   m.transparent = true;
   m.depthWrite = false;
-  m.blending = THREE.AdditiveBlending;
+  m.blending = painted ? THREE.NormalBlending : THREE.AdditiveBlending;
   m.side = THREE.DoubleSide;
   m.fog = false;
   return { m, fade, tint };
@@ -140,7 +141,7 @@ export class Bolts {
   readonly group = new THREE.Group();
   private readonly bolts: Bolt[] = [];
   private readonly bursts: Burst[] = [];
-  private readonly rings: { t: number; size: number; mesh: THREE.Mesh; fade: ReturnType<typeof TSL.uniform>; tint: ReturnType<typeof TSL.uniform> }[] = [];
+  private readonly rings: { t: number; size: number; painted: boolean; mesh: THREE.Mesh; fade: ReturnType<typeof TSL.uniform>; tint: ReturnType<typeof TSL.uniform> }[] = [];
   private readonly beam: { sprite: THREE.Sprite; fade: ReturnType<typeof TSL.uniform>; tint: ReturnType<typeof TSL.uniform>; t: number };
   /** the thrown kiếm khí's look, and the tempest's pink one */
   private readonly looks: { core: THREE.Material; halo: THREE.Material }[] = [];
@@ -197,13 +198,15 @@ export class Bolts {
       this.bursts.push({ t: 1, sprite, flash: fl, fade: ring.fade, flashFade: flash.fade, tint: ring.tint });
     }
     const flat = new THREE.PlaneGeometry(2, 2);
-    for (let i = 0; i < 4; i++) {
-      const gm = groundRingMaterial();
+    // rings of light, and painted marks (a boss's warnings and trails)
+    for (let i = 0; i < 14; i++) {
+      const painted = i >= 6;
+      const gm = groundRingMaterial(painted);
       const mesh = new THREE.Mesh(flat, gm.m);
       mesh.visible = false;
       mesh.frustumCulled = false;
       this.group.add(mesh);
-      this.rings.push({ t: 1, size: 1, mesh, fade: gm.fade, tint: gm.tint });
+      this.rings.push({ t: 1, size: 1, painted, mesh, fade: gm.fade, tint: gm.tint });
     }
   }
 
@@ -331,13 +334,13 @@ export class Bolts {
   }
 
   /** A ring of light spreading from `at` (the tempest's pink ones as she springs and lands). */
-  ring(at: THREE.Vector3, size: number, pink = false) {
-    this.burst(at, size, pink);
+  ring(at: THREE.Vector3, size: number, pink = false, rgb?: readonly [number, number, number]) {
+    this.burst(at, size, pink, rgb);
   }
 
   /** A ring of light spreading flat over the ground from `at` (on the ground), `size` metres out (lime, pink, or `rgb`). */
-  groundRing(at: THREE.Vector3, size: number, pink = false, rgb?: readonly [number, number, number]) {
-    const g = this.rings.find((x) => x.t >= 1) ?? this.rings[0];
+  groundRing(at: THREE.Vector3, size: number, pink = false, rgb?: readonly [number, number, number], painted = false) {
+    const g = this.rings.find((x) => x.painted === painted && x.t >= 1) ?? this.rings.find((x) => x.painted === painted)!;
     g.t = 0;
     g.size = size;
     (g.tint.value as THREE.Color).setRGB(...(rgb ?? (pink ? LOTUS_PINK : LIME)));
@@ -347,10 +350,10 @@ export class Bolts {
     g.mesh.visible = true;
   }
 
-  private burst(at: THREE.Vector3, size: number, pink = false) {
+  private burst(at: THREE.Vector3, size: number, pink = false, rgb?: readonly [number, number, number]) {
     const u = this.bursts.find((x) => x.t >= 1) ?? this.bursts[0];
     u.t = 0;
-    (u.tint.value as THREE.Color).setRGB(...(pink ? LOTUS_PINK : LIME));
+    (u.tint.value as THREE.Color).setRGB(...(rgb ?? (pink ? LOTUS_PINK : LIME)));
     u.sprite.userData.size = size / 2;
     u.sprite.position.copy(at);
     u.flash.position.copy(at);

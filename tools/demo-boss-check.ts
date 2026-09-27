@@ -124,7 +124,7 @@ const near = (m: number) => {
   return !!l && Math.hypot(l.pos.x - hero.pos.x, l.pos.y - hero.pos.y) < m && t > dodgeUntil && !l.attacking;
 };
 let hp = hero.hp;
-const shots = [2, 5, 8, 11, 14.3, 15.2];
+const shots = (process.env.SHOTS ?? "2,5,8,11,14.3,15.2").split(",").map(Number);
 let killed = -1;
 for (; t < 120; ) {
   const lord = game.demoLord();
@@ -199,7 +199,7 @@ for (; t < 120; ) {
   {
     // his moves as they begin (charge, combo blows)
     const st = (game as unknown as { tiger: { state: string } | null }).tiger?.state ?? "-";
-    if (tb >= 0 && st !== lastState && ["charge", "attack", "roar"].includes(st)) log.push(`${(t - tb).toFixed(2)} lord ${st}`);
+    if (tb >= 0 && st !== lastState && ["charge", "attack", "roar", "evade"].includes(st)) log.push(`${(t - tb).toFixed(2)} lord ${st}`);
     lastState = st;
   }
   if (hero.hp < hp - 0.5) {

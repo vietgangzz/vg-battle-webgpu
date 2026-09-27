@@ -68,12 +68,15 @@ export interface CreatureManifest {
  * The painted texture under the valley's light, in the same soft two-band
  * toon as the hero pieces; hot colours (crimson eyes, ember cracks) glow past
  * the bloom threshold; a per-creature flash (object.userData.flash, 0..1)
- * turns it white-hot when struck.
+ * turns it white-hot when struck, and an ember (object.userData.ember, 0..1)
+ * sets it glowing red from the edges in (a boss winding up, or in a rage).
  */
 function creatureMaterial(tex: THREE.Texture, glow: number) {
   const albedo = t3.fromTSL(TSL.texture(tex, TSL.uv()), d.vec4f);
   const flashNode = TSL.uniform(0).onObjectUpdate(({ object }) => (object?.userData.flash as number | undefined) ?? 0);
   const flash = t3.fromTSL(flashNode, d.f32);
+  const emberNode = TSL.uniform(0).onObjectUpdate(({ object }) => (object?.userData.ember as number | undefined) ?? 0);
+  const ember = t3.fromTSL(emberNode, d.f32);
   const m = new THREE.MeshBasicNodeMaterial();
   m.colorNode = t3.toTSL(() => {
     "use gpu";
@@ -93,6 +96,8 @@ function creatureMaterial(tex: THREE.Texture, glow: number) {
     // what burns in the paint: saturated reds and oranges well brighter than the rest
     const hot = std.saturate((base.x - std.max(base.y, base.z) * 1.15) * 4 - 1.2) * std.smoothstep(0.35, 0.6, base.x) * glow;
     c = std.add(c, std.mul(base, hot * 3.2));
+    // the ember: a red heat, strongest at the silhouette, past the bloom threshold
+    c = std.add(c, std.mul(d.vec3f(1.9, 0.03, 0.06), ember.$ * (0.15 + rim * 2.2)));
     c = std.mix(c, d.vec3f(1.6, 1.5, 1.4), flash.$ * 0.85);
     return d.vec4f(fog(c, pw), 1);
   }) as THREE.NodeMaterial["colorNode"];
@@ -278,6 +283,10 @@ export class Creature {
     return this.model.clip(name)?.impact;
   }
 
+  /** How hot the red ember glows (0..1): it eases toward this. */
+  ember = 0;
+  private emberNow = 0;
+
   /** Turn white-hot for a moment (0..1). */
   flash(amount = 1) {
     this.flashT = Math.max(this.flashT, amount);
@@ -293,6 +302,8 @@ export class Creature {
     this.mixer.update(dt);
     this.flashT = Math.max(0, this.flashT - dt * 6);
     this.mesh.userData.flash = this.flashT;
+    this.emberNow += (this.ember - this.emberNow) * (1 - Math.exp(-dt * (this.ember > this.emberNow ? 14 : 4)));
+    this.mesh.userData.ember = this.emberNow;
   }
 
   dispose() {
