@@ -1416,7 +1416,10 @@ export class Explore {
     }
     // the matrices are brought up to date once a frame here (updateMatrices), not by the renderer on every pass
     fs.scene.matrixWorldAutoUpdate = !on;
-    fs.reflectEvery = on ? 2 : 1;
+    // the mirror is redrawn every frame: kept one frame in two it slid against the moving camera on the
+    // frames between, and the river flickered on the phone as SORA ran (the cost: a millisecond of the
+    // CPU, and the mirror's triangles twice as often)
+    fs.reflectEvery = 1;
   }
 
   /**

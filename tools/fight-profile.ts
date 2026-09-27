@@ -242,6 +242,8 @@ if (process.argv.includes("--tree")) {
 if (process.argv.includes("--noshadow")) (game as unknown as { sunShadow: { strength: number } }).sunShadow.strength = 0;
 // --noreflect: the river's mirror never redrawn
 if (process.argv.includes("--noreflect")) (fs as unknown as { reflectEvery: number }).reflectEvery = 1e9;
+// --reflect N: the mirror redrawn every N frames
+if (process.argv.includes("--reflect")) (fs as unknown as { reflectEvery: number }).reflectEvery = Number(arg("--reflect", "1"));
 // --floor: the valley hidden, to see what the frame costs without it (post chain, SORA, the fight)
 if (process.argv.includes("--floor")) {
   const w = (game as unknown as { world: { group: import("three/webgpu").Group } }).world.group;

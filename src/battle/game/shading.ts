@@ -235,11 +235,14 @@ export function water(reflection: [Accessor<d.Vec3f>, Accessor<d.Vec3f>] | null,
     const t = t3.time.$;
     const cam = t3.cameraPosition.$;
     const v = std.normalize(std.sub(cam, pw));
+    // far off the ripples are finer than a pixel: they flatten there, or the glints and the mirror's
+    // wobble sparkle on and off from one frame to the next as the camera moves
+    const calm = 1 - std.smoothstep(15, 60, std.length(std.sub(cam, pw))) * 0.8;
     // two crossing swells and a fine chop, as a normal
     const a = pw.x * 1.1 + pw.y * 0.35 + t * 1.3;
     const b = pw.y * 1.7 - pw.x * 0.5 - t * 0.9;
     const chop = B.noise3(d.vec3f(pw.x * 0.9, pw.y * 0.9, t * 0.35), d.f32(1), d.f32(2), 0.5, d.f32(2), d.f32(0)) - 0.5;
-    const n = std.normalize(d.vec3f(std.cos(a) * 0.05 + chop * 0.12, std.cos(b) * 0.06 + chop * 0.1, 1));
+    const n = std.normalize(d.vec3f((std.cos(a) * 0.05 + chop * 0.12) * calm, (std.cos(b) * 0.06 + chop * 0.1) * calm, 1));
     const fres = 0.08 + 0.92 * std.pow(1 - std.saturate(std.dot(n, v)), 4);
     const tone = B.noise3(d.vec3f(pw.x * 0.04, pw.y * 0.04, 0), d.f32(1), d.f32(3), 0.5, d.f32(2), d.f32(0));
     let col = std.mix(U.waterDeep.$, U.waterShallow.$, std.saturate(tone * 1.2 - 0.1));
@@ -252,7 +255,7 @@ export function water(reflection: [Accessor<d.Vec3f>, Accessor<d.Vec3f>] | null,
     col = std.mix(col, mirrored(), fres * 0.8 * (1 - clear * 0.55));
     // sun glint
     const r = std.reflect(std.neg(v), n);
-    const glint = std.pow(std.saturate(std.dot(r, U.sunDir.$)), 160) * 4;
+    const glint = std.pow(std.saturate(std.dot(r, U.sunDir.$)), 160) * 4 * calm;
     col = std.add(col, std.mul(U.sunColor.$, glint));
     // foam lapping at the bank: a broken line that swells and draws back
     const lap = std.sin(t * 1.7 - deep * 22 + pebbles * 5) * 0.5 + 0.5;

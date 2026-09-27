@@ -248,12 +248,15 @@ export class FilmPlayer {
     if (--this.settle > 0) return;
     let next = this.scale;
     if (this.avgInterval > this.budget * 1.15) next = Math.max(this.minScale, this.scale - 0.05);
-    else if (this.avgInterval < this.budget * 1.02) next = Math.min(MAX_SCALE, this.scale + 0.025);
+    // back up only with room to spare (a frame's own work well under the budget, where it is known):
+    // on a display that holds frames to 60 the interval never shows headroom, and stepping up at every
+    // on-time frame had the picture pulse softer and sharper as it stepped down again
+    else if (this.avgInterval < this.budget * 1.02 && (!this.drawMs || this.drawMs < this.budget * 0.7)) next = Math.min(MAX_SCALE, this.scale + 0.025);
     if (next !== this.scale) {
+      // let the average see the new cost before moving again (longer before going back up)
+      this.settle = next < this.scale ? 20 : 60;
       this.scale = next;
       this.post.setRenderScale(next);
-      // let the average see the new cost before moving again
-      this.settle = 20;
     }
   }
 
