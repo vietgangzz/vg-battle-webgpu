@@ -4,7 +4,7 @@
  * reports each dodge (and whether the dash went), the blows she takes, his
  * health, his rage and the finishing blow, with a few frames.
  *
- *   node tools/run.mjs tools/demo-boss-check.ts [x,y]         the fight, SORA set down at (x, y) (the foot of the stairs)
+ *   node tools/run.mjs tools/demo-boss-check.ts [x,y,yaw]     the fight, SORA at (x, y) (off the bridge), the lord called to meet her
  *   node tools/run.mjs tools/demo-boss-check.ts --soldiers x,y,yaw   the ambush on the towpath instead: the camera over it
  *   ./tools/to-png.sh tools/.out/demo-boss
  */
@@ -52,8 +52,8 @@ const shoot = async (label: string) => {
 
 game.demoSetup();
 for (let i = 0; i < 200; i++) step();
-const [sx, sy] = (process.argv[2]?.startsWith("--") ? "48,62" : (process.argv[2] ?? "48,62")).split(",").map(Number);
-const pagoda = game.demoToPagoda(sx, sy, 230);
+// SORA off the far end of the bridge (or at x,y,yaw), the lord called to meet her there
+const [sx, sy, syaw] = (process.argv[2]?.startsWith("--") ? "-22.5,4,90" : (process.argv[2] ?? "-22.5,4,90")).split(",").map(Number);
 let knob = { x: 0, y: 0 };
 const steer = (goal: { x: number; y: number } | null, ease: number) => {
   let want = { x: 0, y: 0 };
@@ -101,6 +101,10 @@ if (process.argv[2] === "--soldiers") {
   console.log(log.filter((l) => !l.includes("sound")).join("\n"));
   process.exit(0);
 }
+hero.place(new env.THREE.Vector3(sx, sy, 0), syaw);
+game.camera.reset(hero);
+for (let i = 0; i < 30; i++) step();
+game.demoLordNear(230);
 let tb = -1;
 let dodgeSide = 1;
 let dodgeDir = { x: 0, y: 0 };
@@ -162,7 +166,7 @@ for (; t < 120; ) {
       goal = { x: hero.pos.x + dodgeDir.x * 4, y: hero.pos.y + dodgeDir.y * 4 };
       ease = 0.4;
     } else if (d > 2.9) goal = lord.pos;
-  } else if (tb < 0 && Math.hypot(pagoda.x - hero.pos.x, pagoda.y - hero.pos.y) > 17.3) goal = pagoda;
+  }
   steer(goal, ease);
   step();
   if (hero.hp < hp - 0.5) log.push(`${(t - tb).toFixed(2)} she is hit ${(hp - hero.hp).toFixed(0)}`);

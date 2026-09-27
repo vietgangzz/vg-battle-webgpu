@@ -1,10 +1,10 @@
 /**
  * The showcase demo (?demo=1): about a minute of play for a screen recording
  * (cut down to a reel), driven by two programmed thumbs. The left one works
- * the stick (steering SORA down the towpath, over the bridge and up to the
- * pagoda, turned to the camera's heading as a player's thumb would be), the
- * right one holds sprint, turns the camera and taps the attacks, the Heaven
- * Pierce and, against the tiger lord, the lotus tempest; when he swings, it
+ * the stick (steering SORA down the towpath and over the bridge, turned to
+ * the camera's heading as a player's thumb would be), the right one holds
+ * sprint and taps the attacks, the Heaven Pierce and, against the tiger lord
+ * (who meets her off the bridge), the lotus tempest; when he swings, it
  * dashes her out of the way. The touches go through the controls themselves
  * (see Synth) and are drawn as fingertips (see Fingers), so the picture is
  * what a hand playing it shows.
@@ -48,10 +48,6 @@ const TO_BRIDGE: P[] = [
   { x: -23.6, y: -14 },
   { x: -23.2, y: -8 },
 ];
-/** the thủy đình, out in the river east of the bridge: the last shot looks across to it */
-const THUY_DINH: P = { x: 12, y: -7.5 };
-/** the foot of the pagoda's stairs: the reel cuts to her here, running up them to the tiger lord's courtyard (the lens behind her over the open steps) */
-const PAGODA_STAIRS: P = { x: 48, y: 62 };
 /** on over the top and down the far side */
 const ACROSS: P[] = [
   { x: -22.8, y: -1 },
@@ -79,8 +75,8 @@ export function runDemo(env: DemoEnv) {
   /** the left thumb wants the stick (it goes down as soon as the controls are there to take it) */
   let lWant = false;
   let chase = false;
-  /** at the pagoda: the left thumb walks her up to `pagoda` until the tiger lord is out, then takes her to him */
-  let pagoda: P | null = null;
+  /** the tiger lord has been called (off the bridge), and is out and fighting */
+  let lordCalled = false;
   let lordOut = false;
   // a dash out of the way of his swing: which side, which way (on the ground), until when, and when the next may go
   let dodgeSide = 1;
@@ -139,28 +135,6 @@ export function runDemo(env: DemoEnv) {
       env.fingers.current?.press(R);
     });
     at(t2, () => env.synth.current?.up("R"));
-  };
-  /** the right thumb drags the camera round until it looks toward `target` (turned `lead` radians to its left,
-   * so the target sits to the right of SORA): the length of the drag is worked out when it begins */
-  const aim = (t: number, secs: number, target: P, lead: number) => {
-    const from: P = { x: W * 0.62, y: H * 0.3 };
-    at(t - 0.2, () => {
-      rShow(true);
-      glide(from, 0.18);
-    });
-    at(t, () => {
-      const g = env.game();
-      if (!g) return;
-      const h = g.hero.pos;
-      const want = Math.atan2(target.y - h.y, target.x - h.x) + lead;
-      let turn = want - g.camera.heading();
-      turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-      // the camera turns 0.0085 rad a point of drag, the other way to the thumb
-      const dx = Math.max(-W * 0.55, Math.min(W * 0.35, -turn / 0.0085));
-      env.synth.current?.down("R", from.x, from.y);
-      glide({ x: from.x + dx, y: from.y + H * 0.04 }, secs, true);
-    });
-    at(t + secs, () => env.synth.current?.up("R"));
   };
   const lPress = () => {
     lWant = true;
@@ -231,35 +205,31 @@ export function runDemo(env: DemoEnv) {
     });
   }
 
-  // ---------------------------------------------------------------- over the bridge, the camera round to its side
+  // ---------------------------------------------------------------- over the bridge, and the tiger lord comes to meet her
   function outro() {
     runT = -1;
     const t = now();
     env.synth.current?.up("R");
-    // she walks on over the top while the right thumb swings the camera slowly round to look down across
-    // her and the river at the thủy đình (the lens is raised on the bridge)
+    rShow(false);
+    // she walks on over the top and down the far side (the lens raised on the bridge, left to follow her),
+    // and as she steps off it the tiger lord bars her way
     route = [...ACROSS];
-    arrived = lLift;
-    aim(t + 0.6, 4.4, THUY_DINH, 0.18);
-    at(t + 5.4, () => rShow(false));
-    at(t + 5.8, toPagoda);
+    arrived = callLord;
+    at(t + 6.5, callLord);
   }
 
-  // ---------------------------------------------------------------- the pagoda: the tiger lord (the reel cuts to here)
-  function toPagoda() {
-    lLift();
-    env.synth.current?.up("R");
-    const g = env.game();
-    if (!g) return;
-    pagoda = g.demoToPagoda(PAGODA_STAIRS.x, PAGODA_STAIRS.y, 1000);
+  function callLord() {
+    if (lordCalled) return;
+    lordCalled = true;
     route = [];
     arrived = null;
-    at(now() + 0.35, lPress);
+    env.game()?.demoLordNear(1000);
   }
 
   /** He is out and fighting (his roar done): she goes in with kiếm khí, the blade, and when he is worn down, the lotus tempest. */
   function lordFight() {
     const t = now();
+    lPress();
     const g = env.game;
     const near = (m: number) => () => {
       const lord = g()?.demoLord();
@@ -336,7 +306,7 @@ export function runDemo(env: DemoEnv) {
       const hero = g.hero.pos;
       let goal: P | null = null;
       let ease = 0.1;
-      const lord = pagoda ? g.demoLord() : null;
+      const lord = lordCalled ? g.demoLord() : null;
       if (lord && !lordOut) {
         lordOut = true;
         lordFight();
@@ -359,9 +329,8 @@ export function runDemo(env: DemoEnv) {
           goal = { x: hero.x + dodgeDir.x * 4, y: hero.y + dodgeDir.y * 4 };
           ease = 0.4;
         } else if (d > 2.9) goal = lord.pos;
-      } else if (pagoda) {
-        // up the approach until he steps out (then she stops for his roar)
-        if (!lordOut && Math.hypot(pagoda.x - hero.x, pagoda.y - hero.y) > 17.3) goal = pagoda;
+      } else if (lordCalled) {
+        // (she stands for his roar)
       } else if (chase) {
         const foe = g.hero.target;
         if (foe && Math.hypot(foe.pos.x - hero.x, foe.pos.y - hero.y) > 2.6) goal = foe.pos;

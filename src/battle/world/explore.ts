@@ -781,14 +781,16 @@ export class Explore {
     });
   }
 
-  private wakeBoss() {
+  /** The lord steps out: in his courtyard, or (the demo) at `at`, facing `yaw` (degrees). */
+  private wakeBoss(at?: { x: number; y: number; yaw: number }) {
     const b = this.world.data.manifest.markers.find((k) => k.type === "boss")!;
     this.hud.objectives.boss = true;
     this.setPhase("bossIntro");
     const tiger = this.tiger;
     if (tiger) {
       // Ông Ba Mươi steps out into his courtyard and roars
-      tiger.place(b.at[0], b.at[1], this.world.ground.at(b.at[0], b.at[1]), 6, b.yaw ?? 0);
+      const [x, y] = at ? [at.x, at.y] : b.at;
+      tiger.place(x, y, this.world.ground.at(x, y), 6, at ? at.yaw : (b.yaw ?? 0));
       if (this.demoLordHp > 0) tiger.maxHp = tiger.hp = this.demoLordHp;
       tiger.wake(this.time);
       this.fx.fire("dashKage", this.time, V.set(tiger.pos.x, tiger.pos.y, tiger.groundZ), tiger.yaw, 0.05);
@@ -1465,17 +1467,27 @@ export class Explore {
   }
 
   /**
-   * The demo's cut to the pagoda: SORA set down at (x, y) on the way up to
-   * the tiger lord's courtyard, facing it (the camera behind her), so that
-   * she walks up into it and he steps out; his health is `hp`, so the fight
-   * fits the reel.
+   * The demo's tiger lord comes to SORA where she is (off the bridge): he
+   * steps out `far` metres ahead of the lens, on dry open ground, facing her,
+   * and roars; his health is `hp`, so the fight fits the reel.
    */
-  demoToPagoda(x: number, y: number, hp: number) {
-    const b = this.world.data.manifest.markers.find((k) => k.type === "boss")!;
-    this.hero.place(V.set(x, y, 0), (Math.atan2(b.at[1] - y, b.at[0] - x) * 180) / Math.PI);
-    this.camera.reset(this.hero);
+  demoLordNear(hp: number, far = 9) {
+    const h = this.hero.pos;
+    const ahead = this.camera.heading();
+    const clear = (x: number, y: number) => {
+      const z = this.world.ground.at(x, y);
+      return z >= 0.25 && !this.world.solidAt(V.set(x, y, z));
+    };
+    // straight ahead if it is clear, else the nearest clear bearing either side (the river is close by)
+    let x = h.x + Math.cos(ahead) * far;
+    let y = h.y + Math.sin(ahead) * far;
+    for (let k = 1; k <= 12 && !clear(x, y); k++) {
+      const a = ahead + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.35;
+      x = h.x + Math.cos(a) * far;
+      y = h.y + Math.sin(a) * far;
+    }
     this.demoLordHp = hp;
-    return { x: b.at[0], y: b.at[1] };
+    this.wakeBoss({ x, y, yaw: (Math.atan2(h.y - y, h.x - x) * 180) / Math.PI });
   }
 
   /** The tiger lord, for the demo's thumbs: where he is, and whether a blow of his is on its way (null unless he is fighting). */
