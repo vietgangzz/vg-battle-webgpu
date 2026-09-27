@@ -123,18 +123,6 @@ export function runDemo(env: DemoEnv) {
     });
     at(t2, () => env.synth.current?.up("R"));
   };
-  /** the right thumb drags across the free right side of the screen: the camera turns */
-  const drag = (t: number, secs: number, from: P, to: P) => {
-    at(t - 0.2, () => {
-      rShow(true);
-      glide(from, 0.18);
-    });
-    at(t, () => {
-      env.synth.current?.down("R", from.x, from.y);
-      glide(to, secs, true);
-    });
-    at(t + secs, () => env.synth.current?.up("R"));
-  };
   /** the right thumb drags the camera round until it looks toward `target` (turned `lead` radians to its left,
    * so the target sits to the right of SORA): the length of the drag is worked out when it begins */
   const aim = (t: number, secs: number, target: P, lead: number) => {
@@ -191,8 +179,6 @@ export function runDemo(env: DemoEnv) {
     rShow(false);
     env.explore(() => env.game()?.demoSetup());
   });
-  // the title: the camera swings round her
-  drag(2.2, 1.6, { x: W * 0.7, y: H * 0.42 }, { x: W * 0.6, y: H * 0.44 });
   // ---------------------------------------------------------------- from the village down the towpath
   at(4.3, () => {
     runT = now();
@@ -218,9 +204,7 @@ export function runDemo(env: DemoEnv) {
     tap(t + 4.7, "ult");
     for (const k of [7.4, 7.75, 8.1]) tap(t + k, "attack");
     at(t + 8.4, () => env.game()?.charge(2));
-    drag(t + 8.7, 0.8, { x: W * 0.64, y: H * 0.36 }, { x: W * 0.56, y: H * 0.38 });
-    tap(t + 9.8, "ult");
-    drag(t + 11.6, 1.6, { x: W * 0.58, y: H * 0.34 }, { x: W * 0.68, y: H * 0.33 });
+    tap(t + 9.4, "ult");
     at(t + 14.2, () => {
       chase = false;
       lLift();
@@ -242,7 +226,7 @@ export function runDemo(env: DemoEnv) {
     // her and the river at the thủy đình (the lens is raised on the bridge)
     route = [...ACROSS];
     arrived = lLift;
-    aim(t + 0.3, 3.8, THUY_DINH, 0.18);
+    aim(t + 0.6, 5.5, THUY_DINH, 0.18);
     at(t + 6.2, () => {
       rShow(false);
     });
@@ -252,16 +236,14 @@ export function runDemo(env: DemoEnv) {
     });
   }
 
-  /** while running: sprint for four seconds, rest the stamina with a look round, sprint again */
+  /** while running: sprint for four seconds, let the stamina come back, sprint again (the camera left to follow her, as a player leaves it) */
   const runHands = (t: number) => {
     if (runT < 0) return;
     const k = t - runT;
     const beats = [
       { at: 0.4, act: () => hold(now() + 0.05, now() + 4.2, "sprint") },
-      { at: 4.8, act: () => drag(now() + 0.05, 1.4, { x: W * 0.62, y: H * 0.36 }, { x: W * 0.74, y: H * 0.34 }) },
-      { at: 6.6, act: () => hold(now() + 0.05, now() + 3.6, "sprint") },
-      { at: 10.6, act: () => drag(now() + 0.05, 1.2, { x: W * 0.7, y: H * 0.36 }, { x: W * 0.62, y: H * 0.37 }) },
-      { at: 12.2, act: () => hold(now() + 0.05, now() + 3, "sprint") },
+      { at: 5.6, act: () => hold(now() + 0.05, now() + 3.8, "sprint") },
+      { at: 10.4, act: () => hold(now() + 0.05, now() + 3.4, "sprint") },
     ];
     while (runBeat < beats.length && k >= beats[runBeat].at) beats[runBeat++].act();
   };
@@ -319,8 +301,8 @@ export function runDemo(env: DemoEnv) {
         const sy = fx * wx + fy * wy;
         want = { x: sx * 50, y: -sy * 50 };
       }
-      // a thumb eases toward where it wants to be
-      knob = { x: knob.x + (want.x - knob.x) * 0.22, y: knob.y + (want.y - knob.y) * 0.22 };
+      // a thumb eases toward where it wants to be (unhurried: she turns in curves, not snaps)
+      knob = { x: knob.x + (want.x - knob.x) * 0.1, y: knob.y + (want.y - knob.y) * 0.1 };
       if (lDown) {
         const px = l.home.x + knob.x;
         const py = l.home.y + knob.y;
