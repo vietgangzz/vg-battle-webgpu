@@ -1,4 +1,5 @@
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
+import { File, Paths } from "expo-file-system";
 import { useFonts } from "expo-font";
 import * as Haptics from "expo-haptics";
 import { useKeepAwake } from "expo-keep-awake";
@@ -117,6 +118,8 @@ export function GameView({ autostart = false, brawl = 0, boss = 0, demo = false 
   const synth = useRef<Synth | null>(null);
   const fingers = useRef<FingerApi | null>(null);
   const demoRan = useRef(false);
+  /** the demo's sounds as they played: [name, performance.now()] (null when no demo runs) */
+  const demoSounds = useRef<[string, number][] | null>(null);
   const [hud, setHud] = useState<HudState>(EMPTY_HUD);
   const [pops, setPops] = useState<Pop[]>([]);
   const [pausedView, setPausedView] = useState(false);
@@ -250,6 +253,8 @@ export function GameView({ autostart = false, brawl = 0, boss = 0, demo = false 
     demoRan.current = true;
     setTimeout(() => {
       const { width, height } = size.current;
+      const t0 = performance.now();
+      demoSounds.current = [];
       demoStop.current = runDemo({
         game: () => explore.current,
         synth,
@@ -257,6 +262,18 @@ export function GameView({ autostart = false, brawl = 0, boss = 0, demo = false 
         window: { width, height },
         menuButton: { x: width * 0.5, y: height * 0.67 },
         explore: (then) => startExplore(true, then),
+        // the sounds written out (Documents/demo-sounds.json), times in seconds from the demo's start: the
+        // screen recording has no sound, and tools mix these back in, lined up on the tap on EXPLORE (1.2 s)
+        done: () => {
+          try {
+            const f = new File(Paths.document, "demo-sounds.json");
+            if (!f.exists) f.create();
+            f.write(JSON.stringify({ explore: 1.2, sounds: (demoSounds.current ?? []).map(([n, t]) => [n, Math.round(t - t0) / 1000]) }));
+          } catch (e) {
+            console.warn("[demo] sounds", e);
+          }
+          demoSounds.current = null;
+        },
       });
       // (a few seconds on the menu first: time for a screen recording to begin)
     }, 6000);
@@ -328,6 +345,8 @@ export function GameView({ autostart = false, brawl = 0, boss = 0, demo = false 
         const ex = new Explore(p, wd, {
           hud: setWorld,
           sound: (n) => {
+            // (the showcase demo keeps every sound and when, for the recording's soundtrack)
+            demoSounds.current?.push([n, performance.now()]);
             if (settings.current.sfx) sfx.play(n);
             if (settings.current.haptics) HAPTIC[n]?.();
           },
