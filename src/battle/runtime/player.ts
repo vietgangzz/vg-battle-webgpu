@@ -24,7 +24,8 @@ export interface PlayerOptions {
   safeAspect?: number;
   /** target frame interval in ms (60 fps; 120 Hz screens show each frame twice) */
   frameBudget?: number;
-  onProgress?: (stage: string) => void;
+  /** each step as it begins, and how far through it is (0..1) where it can say */
+  onProgress?: (stage: string, fraction?: number) => void;
 }
 
 /** First frame after the film's opening fade from black: the intro idles here and the film resumes from it. */
@@ -100,7 +101,11 @@ export class FilmPlayer {
 
     // first frame of every shot, then each compositor variant: all pipelines now exist
     step("warm-up");
-    for (const [frame] of film.manifest.cuts) player.draw(frame);
+    const cuts = film.manifest.cuts;
+    cuts.forEach(([frame], i) => {
+      player.draw(frame);
+      step("warm-up", (i + 1) / cuts.length);
+    });
     post.warmVariants();
     return player;
   }

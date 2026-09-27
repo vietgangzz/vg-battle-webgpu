@@ -3,7 +3,7 @@ import { useFonts } from "expo-font";
 import * as Haptics from "expo-haptics";
 import { useKeepAwake } from "expo-keep-awake";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, type LayoutChangeEvent, PixelRatio, StyleSheet, Text, View } from "react-native";
+import { type LayoutChangeEvent, PixelRatio, StyleSheet, Text, View } from "react-native";
 import Animated, { type SharedValue, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { Canvas, type CanvasRef } from "react-native-webgpu";
 
@@ -18,6 +18,7 @@ import { pointsFree, RANK_MAX, type SkillId } from "@/battle/world/skills";
 import { Controls } from "@/components/game/controls";
 import { ExploreHud } from "@/components/game/explore-hud";
 import { Hud } from "@/components/game/hud";
+import { LoadingScreen, useLoadProgress } from "@/components/game/loading";
 import { MainMenu, SettingsSheet, StageSelect } from "@/components/game/menu";
 import { DefeatCard, PauseCard, ResultsCard, ValleyCard } from "@/components/game/overlays";
 import { useSave } from "@/components/game/save";
@@ -109,7 +110,7 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
   const [view, setView] = useState<Mode | "loading" | "error">("loading");
   const [page, setPage] = useState<MenuPage>("home");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [stage, setStage] = useState("");
+  const load = useLoadProgress();
   const [hud, setHud] = useState<HudState>(EMPTY_HUD);
   const [pops, setPops] = useState<Pop[]>([]);
   const [pausedView, setPausedView] = useState(false);
@@ -251,7 +252,7 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
         const context = ref.current?.getContext("webgpu");
         if (!context) return;
         const { width, height } = size.current.width ? size.current : { width: 1, height: 1 };
-        const p = await FilmPlayer.create(context, { width, height, pixelRatio: gamePixelRatio() }, { onProgress: setStage });
+        const p = await FilmPlayer.create(context, { width, height, pixelRatio: gamePixelRatio() }, { onProgress: load.report });
         // the game draws at full resolution while it can, and gives up to 30% of it when frames run late
         // (the phone's GPU, not its CPU, is what runs short)
         p.adaptScale(0.7);
@@ -281,13 +282,18 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
           },
         });
         // every stage's scenery, built and compiled now so no stage hitches on entry
-        setStage("stages");
-        await g.prepare((group) => p.renderer.compileAsync(group, p.fs.camera, p.fs.scene));
+        load.report("stages", 0);
+        let built = 0;
+        await g.prepare(async (group) => {
+          await p.renderer.compileAsync(group, p.fs.camera, p.fs.scene);
+          load.report("stages", ++built / STAGES.length);
+        });
         game.current = g;
         setPad(g);
-        setStage("world");
+        load.report("world");
         const wd = await loadWorld();
         // the valley's monsters (the game still runs without them if they fail to load)
+        load.report("creatures");
         const creatures = await loadCreatures().catch((e) => {
           console.warn("[game] creatures", e);
           return null;
@@ -319,7 +325,9 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
         ex.setProgress(heroSave.current.level, heroSave.current.xp);
         ex.setRanks(heroSave.current.ranks);
         ex.world.group.visible = true;
+        load.report("valley");
         await p.renderer.compileAsync(ex.world.group, p.fs.camera, p.fs.scene);
+        load.report("warm");
         await ex.warm((o) => p.renderer.compileAsync(o, p.fs.camera, p.fs.scene));
         ex.world.group.visible = false;
         explore.current = ex;
@@ -343,6 +351,7 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
             explore.current?.frame(now);
           }
         });
+        load.finish();
         toMenu(false);
       } catch (err) {
         console.error("[game]", err);
@@ -493,13 +502,7 @@ export function GameView({ autostart = false, brawl = 0, boss = 0 }: { autostart
       )}
       {settingsOpen && <SettingsSheet settings={save.settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />}
       <Animated.View style={[StyleSheet.absoluteFill, styles.curtain, { pointerEvents: "none" }, curtainStyle]} />
-      {view === "loading" && (
-        // opaque: the warm-up renders every shot once and must not flash on screen
-        <View style={[styles.center, styles.cover, { pointerEvents: "none" }]}>
-          <ActivityIndicator color="#D5F64B" />
-          <Text style={styles.hint}>{stage}</Text>
-        </View>
-      )}
+      {view === "loading" && <LoadingScreen shown={load.shown} label={load.label} />}
       {view === "error" && (
         <View style={styles.center}>
           <Text style={styles.hint}>WebGPU is not available on this device.</Text>
@@ -518,7 +521,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000", alignItems: "center" },
   fill: { ...StyleSheet.absoluteFill },
   center: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", gap: 12 },
-  cover: { backgroundColor: "#000" },
   curtain: { backgroundColor: "#000" },
   hint: { color: "#F5F3E8", opacity: 0.6, fontSize: 13, letterSpacing: 1 },
 });
