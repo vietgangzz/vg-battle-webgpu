@@ -6,8 +6,10 @@
  *  golem        a stone guardian: slow, heavy blows, shrugs off light hits
  *  river_demon  a jade river demon: a trident up close, water orbs from afar
  *  tiger        Ông Ba Mươi, the tiger lord at the pagoda: the valley's boss
- *  tiger_guard  his soldiers, in indigo, barely taller than SORA: quick claws, the odd slam
- *  tiger_brute  his white tigers, in jade: heavy, a slam that shakes the ground
+ *  goblin       his horned goblins, barely taller than SORA: quick claws, the odd slam
+ *  gremlin      his red-eyed gremlins: long arms, a lunge and a swipe
+ *  dwarf        his hooded dwarf warlocks: heavy, a slam that shakes the ground
+ *  (his soldiers are CC0 Meshy community models rigged by Meshy and moving with his own clips)
  *
  * A Monster wears the same face to combat.ts as a fighter (position, yaw,
  * health, reactions, defeat), so blades, kiếm khí, crits, guards and parries
@@ -23,7 +25,7 @@ import type { HitSpec, MoveDef } from "../game/moves";
 import { glow } from "../game/shading";
 import { Creature, type CreatureModel } from "./creature";
 
-export type MonsterKind = "golem" | "river_demon" | "tiger" | "tiger_guard" | "tiger_brute";
+export type MonsterKind = "golem" | "river_demon" | "tiger" | "goblin" | "gremlin" | "dwarf";
 
 interface Spec {
   /** health at level 1, and what combat treats it as (a heavy body shrugs off light blows) */
@@ -107,42 +109,60 @@ const SPECS: Record<MonsterKind, Spec> = {
     runSpeed: 0.8,
     boss: true,
   },
-  tiger_guard: {
-    hp: 38,
+  goblin: {
+    hp: 36,
     as: "shade",
     heavy: false,
     radius: 0.4,
-    walk: 1.4,
-    run: 4.3,
-    reach: 2.2,
+    walk: 1.5,
+    run: 4.6,
+    reach: 2.0,
     attacks: [
-      { clip: "attack", speed: 1.7, hit: { range: 2.6, arc: 75, damage: 8, kind: "light", clip: "diagonalHit" } },
-      { clip: "attack", speed: 1.9, hit: { range: 2.6, arc: 75, damage: 8, kind: "light", clip: "fallingHit" } },
-      { clip: "slam", speed: 1.6, hit: { range: 2.8, arc: 100, damage: 10, kind: "heavy", clip: "waveHit" } },
+      { clip: "attack", speed: 1.8, hit: { range: 2.4, arc: 75, damage: 7, kind: "light", clip: "diagonalHit" } },
+      { clip: "attack", speed: 2.0, hit: { range: 2.4, arc: 75, damage: 7, kind: "light", clip: "fallingHit" } },
+      { clip: "slam", speed: 1.7, hit: { range: 2.6, arc: 100, damage: 9, kind: "heavy", clip: "waveHit" } },
     ],
-    cooldown: [0.9, 1.9],
-    xp: 14,
+    cooldown: [0.8, 1.7],
+    xp: 13,
     stun: 0.5,
     runClip: "run",
-    runSpeed: 1.15,
+    runSpeed: 1.2,
   },
-  tiger_brute: {
+  gremlin: {
+    hp: 44,
+    as: "shade",
+    heavy: false,
+    radius: 0.45,
+    walk: 1.4,
+    run: 4.2,
+    reach: 2.3,
+    attacks: [
+      { clip: "attack", speed: 1.6, hit: { range: 2.8, arc: 80, damage: 9, kind: "light", clip: "diagonalHit" } },
+      { clip: "slam", speed: 1.5, hit: { range: 3.0, arc: 110, damage: 11, kind: "heavy", clip: "waveHit" } },
+    ],
+    cooldown: [1.0, 2.0],
+    xp: 17,
+    stun: 0.45,
+    runClip: "run",
+    runSpeed: 1.1,
+  },
+  dwarf: {
     hp: 100,
     as: "brute",
     heavy: true,
-    radius: 0.62,
+    radius: 0.55,
     walk: 1.2,
-    run: 3.0,
-    reach: 2.8,
+    run: 2.9,
+    reach: 2.5,
     attacks: [
-      { clip: "attack", speed: 1.35, hit: { range: 3.0, arc: 75, damage: 12, kind: "heavy", clip: "diagonalHit" } },
-      { clip: "slam", speed: 1.35, hit: { range: 3.8, arc: 140, damage: 16, kind: "heavy", clip: "waveHit" }, quake: 4.5 },
+      { clip: "attack", speed: 1.35, hit: { range: 2.8, arc: 75, damage: 12, kind: "heavy", clip: "diagonalHit" } },
+      { clip: "slam", speed: 1.35, hit: { range: 3.6, arc: 140, damage: 16, kind: "heavy", clip: "waveHit" }, quake: 4.5 },
     ],
     cooldown: [1.4, 2.6],
     xp: 32,
     stun: 0.3,
     runClip: "run",
-    runSpeed: 0.95,
+    runSpeed: 1.0,
   },
 };
 
@@ -685,14 +705,14 @@ export class WaterOrbs {
  * river, guardians with them deeper in, the strongest at the foot of the pagoda.
  */
 export const PACKS: { x: number; y: number; level: number; kinds: MonsterKind[] }[] = [
-  { x: -86, y: -52, level: 1, kinds: ["tiger_guard", "tiger_guard"] },
-  { x: -72, y: -3, level: 1, kinds: ["tiger_guard", "river_demon"] },
-  { x: -46, y: -46, level: 2, kinds: ["tiger_guard", "tiger_guard", "tiger_guard"] },
+  { x: -86, y: -52, level: 1, kinds: ["goblin", "gremlin"] },
+  { x: -72, y: -3, level: 1, kinds: ["goblin", "river_demon"] },
+  { x: -46, y: -46, level: 2, kinds: ["gremlin", "goblin", "gremlin"] },
   { x: -8, y: -38, level: 2, kinds: ["river_demon", "river_demon"] },
-  { x: 14, y: 8, level: 3, kinds: ["tiger_guard", "tiger_guard", "golem"] },
-  { x: -46, y: 32, level: 3, kinds: ["river_demon", "tiger_guard", "tiger_guard"] },
-  { x: -22, y: 64, level: 4, kinds: ["golem", "tiger_guard", "river_demon"] },
-  { x: 46, y: 34, level: 5, kinds: ["tiger_guard", "tiger_guard", "river_demon", "golem"] },
+  { x: 14, y: 8, level: 3, kinds: ["goblin", "gremlin", "golem"] },
+  { x: -46, y: 32, level: 3, kinds: ["river_demon", "goblin", "gremlin"] },
+  { x: -22, y: 64, level: 4, kinds: ["golem", "goblin", "river_demon"] },
+  { x: 46, y: 34, level: 5, kinds: ["gremlin", "goblin", "river_demon", "golem"] },
   { x: 82, y: 8, level: 5, kinds: ["golem", "river_demon", "river_demon"] },
-  { x: 16, y: 92, level: 6, kinds: ["golem", "golem", "tiger_guard", "tiger_guard"] },
+  { x: 16, y: 92, level: 6, kinds: ["golem", "golem", "gremlin", "goblin"] },
 ];

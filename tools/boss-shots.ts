@@ -1,7 +1,7 @@
 /**
  * The tiger lord and his soldiers, staged headless (Dawn), a few frames each:
  *
- *   node tools/run.mjs tools/boss-shots.ts --lineup     the three side by side, close, in the light
+ *   node tools/run.mjs tools/boss-shots.ts --lineup     the lord and his soldiers side by side, close, in the light
  *   node tools/run.mjs tools/boss-shots.ts --boss       SORA walks into the pagoda courtyard: his roar, the fight, his rage
  *   node tools/run.mjs tools/boss-shots.ts --camp 0     she walks into a camp: his soldiers answer, wave on wave
  *   ./tools/to-png.sh tools/.out/boss
@@ -108,9 +108,10 @@ if (process.argv.includes("--lineup")) {
   for (let i = 0; i < 90; i++) step();
   const pick = (kind: string) => g.monsters.find((m) => m.kind === kind && !m.alive)!;
   const row: [string, number][] = [
-    ["tiger_guard", -2.4],
-    ["tiger", 0],
-    ["tiger_brute", 2.6],
+    ["goblin", -2.6],
+    ["gremlin", -1.3],
+    ["tiger", 0.6],
+    ["dwarf", 2.6],
   ];
   // all facing the camera (yaw 0 looks down -y), SORA at the left end for scale
   for (const [kind, dx] of row) pick(kind).place(x + dx, y, ground(x + dx, y), 3, 0);

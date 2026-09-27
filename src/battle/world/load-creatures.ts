@@ -11,8 +11,9 @@ const BLOBS: Record<string, number> = {
   golem: require("../../../assets/creatures/golem.bin"),
   river_demon: require("../../../assets/creatures/river_demon.bin"),
   tiger: require("../../../assets/creatures/tiger.bin"),
-  tiger_guard: require("../../../assets/creatures/tiger_guard.bin"),
-  tiger_brute: require("../../../assets/creatures/tiger_brute.bin"),
+  goblin: require("../../../assets/creatures/goblin.bin"),
+  gremlin: require("../../../assets/creatures/gremlin.bin"),
+  dwarf: require("../../../assets/creatures/dwarf.bin"),
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 

@@ -149,9 +149,9 @@ interface Pack {
 /** the tiger lord's slams and roars ring the ground in amber */
 const QUAKE: [number, number, number] = [1.6, 0.75, 0.2];
 /** how many of each monster the valley can have out at once (the tiger lord's soldiers serve the packs and the camps) */
-const HERD: Partial<Record<MonsterKind, number>> = { tiger_guard: 12, tiger_brute: 3, river_demon: 5, golem: 3, tiger: 1 };
-/** who answers a camp's call for a shadow or a brute */
-const SOLDIER: Partial<Record<Kind, MonsterKind>> = { shade: "tiger_guard", brute: "tiger_brute" };
+const HERD: Partial<Record<MonsterKind, number>> = { goblin: 8, gremlin: 8, dwarf: 3, river_demon: 5, golem: 3, tiger: 1 };
+/** who answers a camp's call for a shadow (goblins and gremlins, turn about) or a brute */
+const SOLDIER: Partial<Record<Kind, MonsterKind[]>> = { shade: ["goblin", "gremlin"], brute: ["dwarf"] };
 
 interface Camp {
   x: number;
@@ -732,13 +732,18 @@ export class Explore {
     }
   }
 
+  /** soldiers called to the camps so far (goblins and gremlins answer turn about) */
+  private called = 0;
+
   private spawnDue(c: Camp, camp: number) {
-    const soldiers = this.monsters.some((m) => m.kind === "tiger_guard");
+    const soldiers = this.monsters.some((m) => m.kind === "goblin");
     c.pending = c.pending.filter((p) => {
       if (c.t < p.at) return true;
       // the tiger lord's soldiers answer the call (waiting for one to come free if they are all out)
       if (soldiers) {
-        const m = this.monsters.find((x) => x.kind === SOLDIER[p.kind] && x.dead && x.pack < 0 && x.camp < 0);
+        const kinds = SOLDIER[p.kind] ?? [];
+        const free = (k: MonsterKind) => this.monsters.find((x) => x.kind === k && x.dead && x.pack < 0 && x.camp < 0);
+        const m = free(kinds[this.called++ % Math.max(1, kinds.length)]) ?? kinds.map(free).find((x) => x);
         if (!m) return true;
         m.place(p.x, p.y, this.world.ground.at(p.x, p.y), 2 + camp * 2, yawOf(V2.set(this.hero.pos.x - p.x, this.hero.pos.y - p.y, 0)));
         m.camp = camp;
