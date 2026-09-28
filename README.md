@@ -136,11 +136,21 @@ node tools/run.mjs tools/tri-census.ts                      # triangles drawn pe
 
 ## Credits
 
-- 3D models: the Tiger Lord, golem and river demon made with [Meshy](https://www.meshy.ai);
-  the goblin ("A world of warcraft goblin chibi" by mikevargas0321), gremlin
-  ("Cyber Gremlin" by mated1976) and dwarf ("A Chibi-style dwarf warlock") are
-  CC0 models from the Meshy community.
-- Sound effects: built from [Kenney](https://kenney.nl) *Impact Sounds* and
-  *RPG Audio*, CC0. The showcase reel's score is synthesised (`tools/demo-music.ts`).
-- Font: Manrope (SIL Open Font License).
-- Made with ♥ by the VG team.
+**3D models**
+- Ông Ba Mươi (the Tiger Lord), the golem and the river demon: made by the VG team with [Meshy](https://www.meshy.ai) (image to 3D, auto-rig, animation library).
+- The Tiger Lord's soldiers, CC0 models from the [Meshy community](https://www.meshy.ai/discover), rigged and animated by us:
+  - Goblin: ["A world of warcraft goblin chibi"](https://www.meshy.ai/3d-models/0196364c-c69c-70e6-9fd8-cc811e9bf38f) by **mikevargas0321** (CC0)
+  - Gremlin: ["Cyber Gremlin"](https://www.meshy.ai/3d-models/019bf8f6-2ee7-7052-934e-32875c9e3ad4) by **mated1976** (CC0)
+  - Dwarf: ["A Chibi-style dwarf warlock"](https://www.meshy.ai/3d-models/019398c4-ebe0-7bdb-8cd4-01efcf924369) by **Chibi_Figs** (CC0)
+
+**Sound**
+- Sound effects built from [Kenney](https://kenney.nl)'s [Impact Sounds](https://kenney.nl/assets/impact-sounds) and [RPG Audio](https://kenney.nl/assets/rpg-audio) (CC0).
+- The showcase reel's score is synthesised from scratch (`tools/demo-music.ts`): no samples.
+
+**Font**
+- [Manrope](https://github.com/sharanda/manrope) by Mikhail Sharanda (SIL Open Font License).
+
+**Tech**
+- [react-native-webgpu](https://github.com/wcandillon/react-native-webgpu) by William Candillon, [TypeGPU](https://typegpu.com) by Software Mansion, [three.js](https://threejs.org), [Expo](https://expo.dev) and [React Native](https://reactnative.dev).
+
+Made with ♥ by the VG team.
