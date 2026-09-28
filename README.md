@@ -1,5 +1,7 @@
 # VGANG Battle — real-time (React Native, WebGPU)
 
+> 🎮 **The game lives on the [`game`](https://github.com/vietgangzz/vg-battle-webgpu/tree/game) branch:** *Little Giant: Ninh Bình*, a VGANG 3D action RPG in React Native (the valley, SORA's skills, the Tiger Lord). This branch is the real-time film it grew out of.
+
 The Little Giant anime duel from `vg-showcase-demo/battle`, played in real time
 on device: three.js (WebGPU renderer) on `react-native-webgpu` (Dawn), with every
 shader written in TypeGPU (`"use gpu"` → WGSL). Full screen on any display —
@@ -60,3 +62,24 @@ node tools/run.mjs tools/render-frames.ts --frames 10,130,430 --size 1280x720
 node tools/run.mjs tools/render-frames.ts --bench --size 2208x1768           # frame times over the film
 node tools/run.mjs tools/render-frames.ts --raw --profile 240 --size 2208x1768  # GPU cost per object
 ```
+
+## Credits
+
+**3D models**
+- Ông Ba Mươi (the Tiger Lord), the golem and the river demon: made by the VG team with [Meshy](https://www.meshy.ai) (image to 3D, auto-rig, animation library).
+- The Tiger Lord's soldiers, CC0 models from the [Meshy community](https://www.meshy.ai/discover), rigged and animated by us:
+  - Goblin: ["A world of warcraft goblin chibi"](https://www.meshy.ai/3d-models/0196364c-c69c-70e6-9fd8-cc811e9bf38f) by **mikevargas0321** (CC0)
+  - Gremlin: ["Cyber Gremlin"](https://www.meshy.ai/3d-models/019bf8f6-2ee7-7052-934e-32875c9e3ad4) by **mated1976** (CC0)
+  - Dwarf: ["A Chibi-style dwarf warlock"](https://www.meshy.ai/3d-models/019398c4-ebe0-7bdb-8cd4-01efcf924369) by **Chibi_Figs** (CC0)
+
+**Sound**
+- Sound effects built from [Kenney](https://kenney.nl)'s [Impact Sounds](https://kenney.nl/assets/impact-sounds) and [RPG Audio](https://kenney.nl/assets/rpg-audio) (CC0).
+- The showcase reel's score is synthesised from scratch (`tools/demo-music.ts`): no samples.
+
+**Font**
+- [Manrope](https://github.com/sharanda/manrope) by Mikhail Sharanda (SIL Open Font License).
+
+**Tech**
+- [react-native-webgpu](https://github.com/wcandillon/react-native-webgpu) by William Candillon, [TypeGPU](https://typegpu.com) by Software Mansion, [three.js](https://threejs.org), [Expo](https://expo.dev) and [React Native](https://reactnative.dev).
+
+Made with ♥ by the VG team.
