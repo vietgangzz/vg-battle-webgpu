@@ -58,10 +58,10 @@ for (let o = 1; o <= 6; o++) NAMES.forEach((n, i) => (NOTE[`${n}${o}`] = 440 * 2
 const n = (s: string) => NOTE[s];
 
 // ---------------------------------------------------------------- the instruments
-/** The đàn tranh: a bright plucked string, its partials dying high to low; `bend` lifts it a little after the pluck, as a hand pressing the string. */
-const tranh = (at: number, note: string, vel = 1, pan = 0, bend = 0) =>
+/** The đàn tranh: a bright plucked string, its partials dying high to low (in tune: no bends, which landed between the notes). */
+const tranh = (at: number, note: string, vel = 1, pan = 0) =>
   voice(at, 1.8, 0.16 * vel, pan, (t) => {
-    const f = n(note) * (1 + bend * (1 - Math.exp(-t * 7)));
+    const f = n(note);
     let s = 0;
     for (let k = 1; k <= 8; k++) s += (Math.sin(2 * Math.PI * f * k * t + k) / k ** 1.1) * Math.exp(-t * (1.6 + k * 0.9));
     return s * Math.min(1, t * 400);
@@ -138,7 +138,8 @@ const pad = (at: number, notes: string[], dur: number, vel = 1) => {
 /** A gong: inharmonic partials, beating, dying slowly. */
 const gong = (at: number, vel = 1) =>
   voice(at, 4.5, 0.22 * vel, 0, (t) => {
-    const f = 92;
+    // (on D, the key's own note)
+    const f = n("D2");
     let s = 0;
     const parts = [1, 1.47, 2.09, 2.56, 3.18, 3.9, 4.73];
     parts.forEach((p, k) => (s += (Math.sin(2 * Math.PI * f * p * t * (1 + 0.002 * Math.sin(t * 3 + k))) / (1 + k * 0.6)) * Math.exp(-t * (0.6 + k * 0.35))));
@@ -179,12 +180,13 @@ const bars = (from: number, to: number) => {
 pad(0, ["D3", "A3", "D4"], CUE.fight + 0.6, 0.9);
 const lick = ["D4", "A3", "C4", "D4", "F4", "D4", "C4", "A3"];
 for (const b of bars(CUE.intro, CUE.fight))
-  lick.forEach((note, i) => tranh(b + i * BEAT * 0.5, note, i % 4 === 0 ? 1 : 0.7, i % 2 ? 0.35 : -0.35, i === 4 ? 0.03 : 0));
+  lick.forEach((note, i) => tranh(b + i * BEAT * 0.5, note, i % 4 === 0 ? 1 : 0.7, i % 2 ? 0.35 : -0.35));
 riser(CUE.fight - 1.5, 1.5, 0.6);
 
 // the ambush: taiko, bass, the tranh doubled up
-const prog1 = [["D3", "F3", "A3"], ["C3", "G3", "C4"], ["Bb2", "F3", "D4"], ["C3", "G3", "E4"]];
-const roots1 = ["D2", "C2", "Bb1", "C2"];
+// (every chord built from the scale's own notes, D F G A C, so nothing rubs against the tranh a half step away)
+const prog1 = [["D3", "F3", "A3"], ["C3", "G3", "D4"], ["F3", "A3", "C4"], ["C3", "G3", "D4"]];
+const roots1 = ["D2", "C2", "F2", "C2"];
 bars(CUE.fight, CUE.bridge).forEach((b, k) => {
   pad(b, prog1[k % 4], 2.1, 0.8);
   for (const [i, v] of [[0, 1], [1.5, 0.6], [2, 0.8], [3.5, 0.7]] as const) taiko(b + i * BEAT, v, 1, 0);
@@ -206,7 +208,7 @@ bridgeBars.forEach((b, k) => {
   taiko(b, 0.45, 0.9, -0.2);
   if (k % 2) taiko(b + 2 * BEAT, 0.3, 0.9, 0.2);
   for (let i = 0; i < 4; i++) shaker(b + i * BEAT, 0.5);
-  bass(b, k % 2 ? "Bb1" : "D2", 1.8, 0.6);
+  bass(b, k % 2 ? "F2" : "D2", 1.8, 0.6);
 });
 const tune: [string, number][] = [
   ["A4", 1],
@@ -241,18 +243,22 @@ boom(CUE.lord, 1);
 gong(CUE.lord, 1);
 
 // the duel: all of it, faster and higher
-const prog2 = [["D3", "F3", "A3"], ["Bb2", "F3", "D4"], ["F3", "A3", "C4"], ["C3", "G3", "E4"]];
-const roots2 = ["D2", "Bb1", "F2", "C2"];
+const prog2 = [["D3", "F3", "A3"], ["F3", "A3", "C4"], ["C3", "G3", "D4"], ["G2", "C3", "D3"]];
+const roots2 = ["D2", "F2", "C2", "G1"];
+// (the last bar stops at the tempest: its F would rub against the closing chord's F#)
+const before = (t: number) => t < CUE.tempest - 0.04;
 bars(CUE.duel, CUE.tempest).forEach((b, k) => {
-  pad(b, prog2[k % 4], 2.1, 1);
-  for (const [i, v] of [[0, 1.1], [0.75, 0.5], [1.5, 0.7], [2, 1], [2.75, 0.5], [3, 0.6], [3.5, 0.8]] as const) taiko(b + i * BEAT, v, i === 0 ? 0.9 : 1.1, (i * 0.3) % 0.6 - 0.3);
-  for (const i of [1, 3]) rim(b + i * BEAT, 1);
-  for (let i = 0; i < 16; i++) shaker(b + i * BEAT * 0.25, i % 4 === 0 ? 1 : 0.5);
-  for (let i = 0; i < 8; i++) bass(b + i * BEAT * 0.5, roots2[k % 4], 0.22, i % 2 ? 0.75 : 1.1);
+  pad(b, prog2[k % 4], Math.min(2.1, CUE.tempest - b + 0.15), 1);
+  for (const [i, v] of [[0, 1.1], [0.75, 0.5], [1.5, 0.7], [2, 1], [2.75, 0.5], [3, 0.6], [3.5, 0.8]] as const)
+    if (before(b + i * BEAT)) taiko(b + i * BEAT, v, i === 0 ? 0.9 : 1.1, (i * 0.3) % 0.6 - 0.3);
+  for (const i of [1, 3]) if (before(b + i * BEAT)) rim(b + i * BEAT, 1);
+  for (let i = 0; i < 16; i++) if (before(b + i * BEAT * 0.25)) shaker(b + i * BEAT * 0.25, i % 4 === 0 ? 1 : 0.5);
+  for (let i = 0; i < 8; i++) if (before(b + i * BEAT * 0.5)) bass(b + i * BEAT * 0.5, roots2[k % 4], 0.22, i % 2 ? 0.75 : 1.1);
   const riff = k % 2
     ? ["D5", "F5", "G5", "A5", "G5", "F5", "D5", "C5", "D5", "F5", "A5", "C6", "A5", "G5", "F5", "D5"]
     : ["A4", "C5", "D5", "F5", "D5", "C5", "A4", "C5", "D5", "C5", "A4", "G4", "A4", "C5", "D5", "F5"];
-  riff.forEach((note, i) => tranh(b + i * BEAT * 0.25, note, i % 4 === 0 ? 0.9 : 0.55, i % 2 ? 0.5 : -0.3, i % 8 === 7 ? 0.04 : 0));
+  // (a tranh note rings 1.8 s: the last ones before the tempest are cut short by it, not left ringing into the chord)
+  riff.forEach((note, i) => before(b + i * BEAT * 0.25 + 0.6) && tranh(b + i * BEAT * 0.25, note, i % 4 === 0 ? 0.9 : 0.55, i % 2 ? 0.5 : -0.3));
   if (k % 4 === 0 && b > CUE.duel + 1) gong(b, 0.45);
 });
 riser(CUE.tempest - 2.4, 2.4, 1);
@@ -263,7 +269,7 @@ boom(CUE.tempest, 1.1);
 gong(CUE.tempest, 1);
 pad(CUE.tempest, ["D3", "F#3", "A3", "D4"], CUE.end - CUE.tempest + 0.4, 1.4);
 bass(CUE.tempest, "D2", 2.5, 1);
-["D5", "F#5", "A5", "D6"].forEach((note, i) => tranh(CUE.tempest + 0.15 + i * 0.09, note, 0.9, i % 2 ? 0.4 : -0.4, 0.02));
+["D5", "F#5", "A5", "D6"].forEach((note, i) => tranh(CUE.tempest + 0.15 + i * 0.09, note, 0.9, i % 2 ? 0.4 : -0.4));
 boom(CUE.lotus, 0.8);
 gong(CUE.lotus, 1.2);
 ["A4", "D5", "F#5", "A5", "D6"].forEach((note, i) => tranh(CUE.lotus + 0.1 + i * 0.12, note, 0.8, i % 2 ? 0.35 : -0.35));
